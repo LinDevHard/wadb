@@ -58,7 +58,7 @@ jobs:
           NAME="wadb-${VERSION}-${GOOS}-${GOARCH}"
           OUT="dist/${NAME}/wadb${{ matrix.ext }}"
           mkdir -p "dist/${NAME}"
-          go build -trimpath -ldflags "-s -w" -o "${OUT}" .
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "${OUT}" .
           cp README.md LICENSE "dist/${NAME}/"
           cd dist
           if [ "${GOOS}" = "windows" ]; then
