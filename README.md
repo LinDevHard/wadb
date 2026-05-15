@@ -54,3 +54,7 @@ If none match, set `ANDROID_HOME` or install platform-tools.
 ## Status
 
 MVP. Platform tested: macOS. Linux should work as-is. Windows adb discovery is stubbed but not exercised.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
