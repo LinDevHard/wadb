@@ -8,6 +8,8 @@ Connect an Android 11+ device over ADB Wi-Fi by scanning a QR code from your ter
 
 Same protocol as Android Studio's *Pair device using Wi-Fi*, but without launching the IDE — just run `wadb`, scan, done.
 
+![demo](docs/demo.gif)
+
 ## Install
 
 Requires Go (see [go.mod](go.mod) for the minimum version) and `adb` from Android platform-tools.
