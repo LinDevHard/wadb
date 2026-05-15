@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -23,5 +27,71 @@ jobs:
       - name: go test
         run: go test -race ./...
 
-      - name: go build
-        run: go build ./...
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin,  goarch: arm64, ext: ""     }
+          - { goos: darwin,  goarch: amd64, ext: ""     }
+          - { goos: linux,   goarch: amd64, ext: ""     }
+          - { goos: linux,   goarch: arm64, ext: ""     }
+          - { goos: windows, goarch: amd64, ext: ".exe" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME//\//-}"
+          NAME="wadb-${VERSION}-${GOOS}-${GOARCH}"
+          OUT="dist/${NAME}/wadb${{ matrix.ext }}"
+          mkdir -p "dist/${NAME}"
+          go build -trimpath -ldflags "-s -w" -o "${OUT}" .
+          cp README.md LICENSE "dist/${NAME}/"
+          cd dist
+          if [ "${GOOS}" = "windows" ]; then
+            zip -r "${NAME}.zip" "${NAME}"
+            echo "ARCHIVE=${NAME}.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "${NAME}.tar.gz" "${NAME}"
+            echo "ARCHIVE=${NAME}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wadb-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ env.ARCHIVE }}
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Show artifacts
+        run: ls -la dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
