@@ -1,5 +1,8 @@
 # wadb
 
+[![CI](https://github.com/LinDevHard/wadb/actions/workflows/ci.yml/badge.svg)](https://github.com/LinDevHard/wadb/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 CLI for pairing and connecting an Android 11+ device over ADB Wi-Fi by scanning a QR code from the terminal. Same protocol as Android Studio's "Pair device using Wi-Fi", without launching Android Studio.
 
 ## How it works
