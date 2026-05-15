@@ -1,6 +1,6 @@
 module github.com/lindevhard/wadb
 
-go 1.26.3
+go 1.25.0
 
 require (
 	github.com/grandcat/zeroconf v1.0.0
