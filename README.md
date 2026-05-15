@@ -1,7 +1,6 @@
 # wadb
 
 [![CI](https://github.com/LinDevHard/wadb/actions/workflows/ci.yml/badge.svg)](https://github.com/LinDevHard/wadb/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/lindevhard/wadb.svg)](https://pkg.go.dev/github.com/lindevhard/wadb)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Connect an Android 11+ device over ADB Wi-Fi by scanning a QR code from your terminal.
