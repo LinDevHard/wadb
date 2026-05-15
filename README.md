@@ -1,6 +1,7 @@
 # wadb
 
 [![CI](https://github.com/LinDevHard/wadb/actions/workflows/ci.yml/badge.svg)](https://github.com/LinDevHard/wadb/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/lindevhard/wadb.svg)](https://pkg.go.dev/github.com/lindevhard/wadb)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Connect an Android 11+ device over ADB Wi-Fi by scanning a QR code from your terminal.
@@ -74,8 +75,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT
 ## License
 
 [MIT](LICENSE)
-
-## Acknowledgments
-
-- The ADB wireless pairing protocol is documented in the [LineageOS adb_wifi.md](https://github.com/LineageOS/android_packages_modules_adb/blob/lineage-23.2/docs/dev/adb_wifi.md) (fork of AOSP).
-- Reference implementation in Python: [Vazgen005/adb-wifi-py](https://github.com/Vazgen005/adb-wifi-py).
