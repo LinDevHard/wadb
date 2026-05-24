@@ -83,6 +83,19 @@ func run(pairingTimeout, connectTimeout time.Duration, verbose bool) error {
 	}
 	fmt.Fprintln(os.Stderr, "Using adb:", adbPath)
 
+	adbVersion, err := adb.Version(ctx, adbPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Warning:", err)
+	} else if adbVersion.PlatformToolsMajor > 0 {
+		fmt.Fprintf(os.Stderr, "Using platform-tools: %d\n", adbVersion.PlatformToolsMajor)
+		if !adbVersion.SupportsWifi2Improvements() {
+			fmt.Fprintf(os.Stderr, "Warning: platform-tools before %d may miss newer ADB Wi-Fi mDNS and reconnect improvements.\n", adb.Wifi2PlatformToolsMajor)
+		}
+	} else if verbose {
+		fmt.Fprintln(os.Stderr, "adb version output:")
+		fmt.Fprintln(os.Stderr, adbVersion.Raw)
+	}
+
 	if err := adb.StartServer(ctx, adbPath); err != nil {
 		return err
 	}

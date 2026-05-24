@@ -8,9 +8,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 )
+
+// Wifi2PlatformToolsMajor is the first platform-tools major version with the
+// ADB Wi-Fi mDNS/reconnect improvements described as ADB Wi-Fi 2.
+const Wifi2PlatformToolsMajor = 37
+
+var platformToolsVersionRE = regexp.MustCompile(`(?m)^Version\s+([0-9]+)(?:\.[0-9]+)*`)
+
+type VersionInfo struct {
+	Raw                string
+	PlatformToolsMajor int
+}
 
 // Find locates the adb binary. It checks well-known SDK locations first,
 // then $PATH, and finally Homebrew commandline-tools. Returns the first
@@ -75,6 +88,34 @@ func isExecutable(p string) bool {
 		return true
 	}
 	return info.Mode()&0o111 != 0
+}
+
+func Version(ctx context.Context, adbPath string) (VersionInfo, error) {
+	cmd := exec.CommandContext(ctx, adbPath, "version")
+	out, err := cmd.CombinedOutput()
+	raw := strings.TrimSpace(string(out))
+	if err != nil {
+		return VersionInfo{Raw: raw}, fmt.Errorf("adb version: %w: %s", err, raw)
+	}
+	return parseVersion(raw), nil
+}
+
+func parseVersion(raw string) VersionInfo {
+	info := VersionInfo{Raw: raw}
+	m := platformToolsVersionRE.FindStringSubmatch(raw)
+	if len(m) < 2 {
+		return info
+	}
+	major, err := strconv.Atoi(m[1])
+	if err != nil {
+		return info
+	}
+	info.PlatformToolsMajor = major
+	return info
+}
+
+func (v VersionInfo) SupportsWifi2Improvements() bool {
+	return v.PlatformToolsMajor >= Wifi2PlatformToolsMajor
 }
 
 // StartServer ensures the adb daemon is running. Without this the first

@@ -56,3 +56,28 @@ func TestFindReturnsErrorWhenAbsent(t *testing.T) {
 		t.Fatalf("Find returned empty path with nil error")
 	}
 }
+
+func TestParseVersion(t *testing.T) {
+	raw := "Android Debug Bridge version 1.0.41\nVersion 37.0.0-13206524\nInstalled as /sdk/platform-tools/adb"
+
+	got := parseVersion(raw)
+	if got.Raw != raw {
+		t.Fatalf("Raw = %q, want %q", got.Raw, raw)
+	}
+	if got.PlatformToolsMajor != 37 {
+		t.Fatalf("PlatformToolsMajor = %d, want 37", got.PlatformToolsMajor)
+	}
+	if !got.SupportsWifi2Improvements() {
+		t.Fatalf("SupportsWifi2Improvements = false, want true")
+	}
+}
+
+func TestParseVersionWithoutPlatformToolsVersion(t *testing.T) {
+	got := parseVersion("Android Debug Bridge version 1.0.41")
+	if got.PlatformToolsMajor != 0 {
+		t.Fatalf("PlatformToolsMajor = %d, want 0", got.PlatformToolsMajor)
+	}
+	if got.SupportsWifi2Improvements() {
+		t.Fatalf("SupportsWifi2Improvements = true, want false")
+	}
+}
