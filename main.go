@@ -100,7 +100,7 @@ func run(pairingTimeout, connectTimeout time.Duration) error {
 	defer cancelPair()
 	pairEP, err := mdns.BrowsePairing(pairCtx, serviceName)
 	if err != nil {
-		return fmt.Errorf("did not see device announce within %s: %w", pairingTimeout, err)
+		return fmt.Errorf("did not see _adb-tls-pairing._tcp announce within %s: %w\ncheck that both devices are on the same Wi-Fi, Wireless debugging is enabled, and mDNS/UDP 5353 is not blocked by the network or firewall", pairingTimeout, err)
 	}
 	fmt.Printf("Found pairing endpoint %s:%d, pairing...\n", pairEP.Host, pairEP.Port)
 
@@ -114,7 +114,7 @@ func run(pairingTimeout, connectTimeout time.Duration) error {
 	defer cancelConn()
 	connEP, err := mdns.BrowseConnect(connCtx)
 	if err != nil {
-		return fmt.Errorf("device did not announce connect service: %w", err)
+		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nsome Android builds delay this announce; retry wadb, or run adb connect manually using the host and port shown in Wireless debugging", connectTimeout, err)
 	}
 
 	out, err := adb.Connect(ctx, adbPath, connEP.Host, connEP.Port)
