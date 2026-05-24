@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	pairingTimeout = 120 * time.Second
-	connectTimeout = 30 * time.Second
+	defaultPairingTimeout = 120 * time.Second
+	defaultConnectTimeout = 30 * time.Second
 )
 
 // version is populated at build time via -ldflags "-X main.version=...".
@@ -25,6 +25,8 @@ var version = "dev"
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.BoolVar(showVersion, "v", false, "shorthand for --version")
+	pairingTimeout := flag.Duration("pair-timeout", defaultPairingTimeout, "time to wait for the pairing mDNS announce")
+	connectTimeout := flag.Duration("connect-timeout", defaultConnectTimeout, "time to wait for the connect mDNS announce")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -39,7 +41,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := run(); err != nil {
+	if err := run(*pairingTimeout, *connectTimeout); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
@@ -61,7 +63,7 @@ func usage() {
 	flag.PrintDefaults()
 }
 
-func run() error {
+func run(pairingTimeout, connectTimeout time.Duration) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
