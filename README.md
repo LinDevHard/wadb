@@ -36,6 +36,16 @@ A QR code prints in the terminal. On your phone open
 
 Both the phone and the host must be on the same Wi-Fi network (no AP isolation between clients), and Wireless debugging must be enabled in Developer options.
 
+Useful diagnostics:
+
+```sh
+wadb doctor
+wadb --verbose
+wadb --pair-timeout 3m --connect-timeout 45s
+```
+
+`doctor` checks the local `adb`, starts the server, and prints mDNS services reported by `adb mdns services`. `--verbose` prints discovered mDNS entries during pairing.
+
 ## How it works
 
 1. `wadb` locates the local `adb` binary.
