@@ -55,6 +55,10 @@ wadb --pair-timeout 3m --connect-timeout 45s
 
 The actual TLS pairing handshake is handled by `adb pair`; `wadb` only orchestrates discovery and credential generation.
 
+## Background
+
+For a deeper explanation of the ADB Wi-Fi pairing flow, mDNS discovery, and newer reconnect improvements, see the Android Makers/droidCon 2026 talk [How ADB Wifi 2.0 works](https://www.youtube.com/watch?v=_CR44gRhad4).
+
 ## `adb` discovery
 
 `wadb` searches for `adb` in this order and uses the first match:
