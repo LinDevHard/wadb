@@ -25,6 +25,7 @@ var version = "dev"
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.BoolVar(showVersion, "v", false, "shorthand for --version")
+	verbose := flag.Bool("verbose", false, "print discovered mDNS service entries to stderr")
 	pairingTimeout := flag.Duration("pair-timeout", defaultPairingTimeout, "time to wait for the pairing mDNS announce")
 	connectTimeout := flag.Duration("connect-timeout", defaultConnectTimeout, "time to wait for the connect mDNS announce")
 	flag.Usage = usage
@@ -41,7 +42,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := run(*pairingTimeout, *connectTimeout); err != nil {
+	if err := run(*pairingTimeout, *connectTimeout, *verbose); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
@@ -63,9 +64,16 @@ func usage() {
 	flag.PrintDefaults()
 }
 
-func run(pairingTimeout, connectTimeout time.Duration) error {
+func run(pairingTimeout, connectTimeout time.Duration, verbose bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	var logf mdns.Logf
+	if verbose {
+		logf = func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, format+"\n", args...)
+		}
+	}
 
 	adbPath, err := adb.Find()
 	if err != nil {
@@ -98,7 +106,7 @@ func run(pairingTimeout, connectTimeout time.Duration) error {
 
 	pairCtx, cancelPair := context.WithTimeout(ctx, pairingTimeout)
 	defer cancelPair()
-	pairEP, err := mdns.BrowsePairing(pairCtx, serviceName)
+	pairEP, err := mdns.BrowsePairing(pairCtx, serviceName, logf)
 	if err != nil {
 		return fmt.Errorf("did not see _adb-tls-pairing._tcp announce within %s: %w\ncheck that both devices are on the same Wi-Fi, Wireless debugging is enabled, and mDNS/UDP 5353 is not blocked by the network or firewall", pairingTimeout, err)
 	}
@@ -112,7 +120,7 @@ func run(pairingTimeout, connectTimeout time.Duration) error {
 	fmt.Println("Waiting for device to announce on _adb-tls-connect._tcp...")
 	connCtx, cancelConn := context.WithTimeout(ctx, connectTimeout)
 	defer cancelConn()
-	connEP, err := mdns.BrowseConnect(connCtx)
+	connEP, err := mdns.BrowseConnect(connCtx, logf)
 	if err != nil {
 		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nsome Android builds delay this announce; retry wadb, or run adb connect manually using the host and port shown in Wireless debugging", connectTimeout, err)
 	}
