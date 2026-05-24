@@ -118,6 +118,16 @@ func (v VersionInfo) SupportsWifi2Improvements() bool {
 	return v.PlatformToolsMajor >= Wifi2PlatformToolsMajor
 }
 
+func MDNSServices(ctx context.Context, adbPath string) (string, error) {
+	cmd := exec.CommandContext(ctx, adbPath, "mdns", "services")
+	out, err := cmd.CombinedOutput()
+	combined := strings.TrimSpace(string(out))
+	if err != nil {
+		return combined, fmt.Errorf("adb mdns services: %w: %s", err, combined)
+	}
+	return combined, nil
+}
+
 // StartServer ensures the adb daemon is running. Without this the first
 // `adb pair` call sometimes hangs on daemon startup before the mDNS
 // announce window closes.

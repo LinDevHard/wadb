@@ -39,6 +39,13 @@ func main() {
 	}
 
 	if flag.NArg() > 0 {
+		if flag.Arg(0) == "doctor" && flag.NArg() == 1 {
+			if err := doctor(*verbose); err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				os.Exit(1)
+			}
+			return
+		}
 		fmt.Fprintf(os.Stderr, "error: unexpected positional arguments: %v\n\n", flag.Args())
 		flag.Usage()
 		os.Exit(2)
@@ -56,6 +63,7 @@ func usage() {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  wadb [flags]")
+	fmt.Fprintln(w, "  wadb [flags] doctor")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "With no flags, wadb prints a QR code. Scan it from")
 	fmt.Fprintln(w, "Settings → Developer options → Wireless debugging → Pair device with QR code")
@@ -64,6 +72,52 @@ func usage() {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Flags:")
 	flag.PrintDefaults()
+}
+
+func doctor(verbose bool) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	adbPath, err := adb.Find()
+	if err != nil {
+		return err
+	}
+	fmt.Println("adb:", adbPath)
+
+	adbVersion, err := adb.Version(ctx, adbPath)
+	if err != nil {
+		fmt.Println("adb version: warning:", err)
+	} else if adbVersion.PlatformToolsMajor > 0 {
+		fmt.Println("platform-tools:", adbVersion.PlatformToolsMajor)
+		if !adbVersion.SupportsWifi2Improvements() {
+			fmt.Printf("warning: platform-tools before %d may miss newer ADB Wi-Fi mDNS and reconnect improvements.\n", adb.Wifi2PlatformToolsMajor)
+		}
+	} else {
+		fmt.Println("platform-tools: unknown")
+		if verbose {
+			fmt.Println(adbVersion.Raw)
+		}
+	}
+
+	if err := adb.StartServer(ctx, adbPath); err != nil {
+		return err
+	}
+	fmt.Println("adb server: running")
+
+	services, err := adb.MDNSServices(ctx, adbPath)
+	if err != nil {
+		fmt.Println("mDNS services: warning:", err)
+		fmt.Println("hint: if pairing hangs, check same Wi-Fi, AP isolation, firewall rules, and UDP 5353.")
+		return nil
+	}
+	if services == "" {
+		fmt.Println("mDNS services: none reported by adb")
+		fmt.Println("hint: this is normal when no Android device is advertising Wireless debugging right now.")
+		return nil
+	}
+	fmt.Println("mDNS services:")
+	fmt.Println(services)
+	return nil
 }
 
 func run(pairingTimeout, connectTimeout time.Duration, verbose bool) error {
