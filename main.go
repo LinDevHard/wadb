@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 const (
 	defaultPairingTimeout = 120 * time.Second
 	defaultConnectTimeout = 30 * time.Second
+	connectSettleDelay    = 2 * time.Second
 )
 
 // version is populated at build time via -ldflags "-X main.version=...".
@@ -120,15 +122,21 @@ func run(pairingTimeout, connectTimeout time.Duration, verbose bool) error {
 	fmt.Println("Waiting for device to announce on _adb-tls-connect._tcp...")
 	connCtx, cancelConn := context.WithTimeout(ctx, connectTimeout)
 	defer cancelConn()
-	connEP, err := mdns.BrowseConnect(connCtx, logf)
+	connEPs, err := mdns.BrowseConnect(connCtx, connectSettleDelay, logf)
 	if err != nil {
 		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nsome Android builds delay this announce; retry wadb, or run adb connect manually using the host and port shown in Wireless debugging", connectTimeout, err)
 	}
 
-	out, err := adb.Connect(ctx, adbPath, connEP.Host, connEP.Port)
-	if err != nil {
-		return err
+	var failures []string
+	for _, connEP := range connEPs {
+		fmt.Printf("Connecting to %s:%d...\n", connEP.Host, connEP.Port)
+		out, err := adb.Connect(ctx, adbPath, connEP.Host, connEP.Port)
+		if err == nil {
+			fmt.Println(out)
+			return nil
+		}
+		failures = append(failures, err.Error())
 	}
-	fmt.Println(out)
-	return nil
+
+	return fmt.Errorf("failed to connect to %d discovered endpoint(s): %s", len(connEPs), strings.Join(failures, "; "))
 }

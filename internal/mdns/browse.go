@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/grandcat/zeroconf"
 )
@@ -31,14 +32,14 @@ func BrowsePairing(ctx context.Context, wantInstance string, logf Logf) (Endpoin
 	}, logf)
 }
 
-// BrowseConnect watches _adb-tls-connect._tcp and returns the first entry.
+// BrowseConnect watches _adb-tls-connect._tcp and returns discovered entries.
 // The connect instance name is `adb-<serial>-<rand>`, unknown beforehand;
-// since browse is started only after a successful pair, the announce we
-// catch belongs to the device we just paired with in the common case.
-func BrowseConnect(ctx context.Context, logf Logf) (Endpoint, error) {
-	return browseUntil(ctx, connectService, func(*zeroconf.ServiceEntry) bool {
+// since browse is started only after a successful pair, the first announces
+// usually include the device we just paired with.
+func BrowseConnect(ctx context.Context, settle time.Duration, logf Logf) ([]Endpoint, error) {
+	return browseCandidates(ctx, connectService, func(*zeroconf.ServiceEntry) bool {
 		return true
-	}, logf)
+	}, settle, logf)
 }
 
 func browseUntil(ctx context.Context, service string, match func(*zeroconf.ServiceEntry) bool, logf Logf) (Endpoint, error) {
@@ -73,6 +74,61 @@ func browseUntil(ctx context.Context, service string, match func(*zeroconf.Servi
 				continue
 			}
 			return Endpoint{Host: host, Port: e.Port}, nil
+		}
+	}
+}
+
+func browseCandidates(ctx context.Context, service string, match func(*zeroconf.ServiceEntry) bool, settle time.Duration, logf Logf) ([]Endpoint, error) {
+	resolver, err := zeroconf.NewResolver(nil)
+	if err != nil {
+		return nil, fmt.Errorf("mdns resolver: %w", err)
+	}
+
+	entries := make(chan *zeroconf.ServiceEntry, 8)
+	browseCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if err := resolver.Browse(browseCtx, service, domain, entries); err != nil {
+		return nil, fmt.Errorf("mdns browse %s: %w", service, err)
+	}
+
+	var endpoints []Endpoint
+	seen := make(map[Endpoint]bool)
+	var settleTimer <-chan time.Time
+
+	for {
+		select {
+		case <-ctx.Done():
+			if len(endpoints) > 0 {
+				return endpoints, nil
+			}
+			return nil, fmt.Errorf("mdns browse %s: %w", service, ctx.Err())
+		case <-settleTimer:
+			return endpoints, nil
+		case e, ok := <-entries:
+			if !ok {
+				if len(endpoints) > 0 {
+					return endpoints, nil
+				}
+				return nil, fmt.Errorf("mdns browse %s: channel closed", service)
+			}
+			logEntry(logf, service, e)
+			if e == nil || !match(e) {
+				continue
+			}
+			host := pickAddr(e)
+			if host == "" {
+				continue
+			}
+			ep := Endpoint{Host: host, Port: e.Port}
+			if seen[ep] {
+				continue
+			}
+			seen[ep] = true
+			endpoints = append(endpoints, ep)
+			if settleTimer == nil {
+				settleTimer = time.After(settle)
+			}
 		}
 	}
 }
