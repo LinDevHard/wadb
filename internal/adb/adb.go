@@ -18,6 +18,8 @@ import (
 // ADB Wi-Fi mDNS/reconnect improvements described as ADB Wi-Fi 2.
 const Wifi2PlatformToolsMajor = 37
 
+const mdnsServicesHeader = "List of discovered mdns services"
+
 var platformToolsVersionRE = regexp.MustCompile(`(?m)^Version\s+([0-9]+)(?:\.[0-9]+)*`)
 
 type VersionInfo struct {
@@ -126,6 +128,18 @@ func MDNSServices(ctx context.Context, adbPath string) (string, error) {
 		return combined, fmt.Errorf("adb mdns services: %w: %s", err, combined)
 	}
 	return combined, nil
+}
+
+func ParseMDNSServices(raw string) []string {
+	var services []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == mdnsServicesHeader {
+			continue
+		}
+		services = append(services, line)
+	}
+	return services
 }
 
 // StartServer ensures the adb daemon is running. Without this the first

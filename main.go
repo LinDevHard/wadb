@@ -110,13 +110,14 @@ func doctor(verbose bool) error {
 		fmt.Println("hint: if pairing hangs, check same Wi-Fi, AP isolation, firewall rules, and UDP 5353.")
 		return nil
 	}
-	if services == "" {
+	serviceLines := adb.ParseMDNSServices(services)
+	if len(serviceLines) == 0 {
 		fmt.Println("mDNS services: none reported by adb")
 		fmt.Println("hint: this is normal when no Android device is advertising Wireless debugging right now.")
 		return nil
 	}
 	fmt.Println("mDNS services:")
-	fmt.Println(services)
+	fmt.Println(strings.Join(serviceLines, "\n"))
 	return nil
 }
 

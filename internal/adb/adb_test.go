@@ -81,3 +81,28 @@ func TestParseVersionWithoutPlatformToolsVersion(t *testing.T) {
 		t.Fatalf("SupportsWifi2Improvements = true, want false")
 	}
 }
+
+func TestParseMDNSServicesHeaderOnly(t *testing.T) {
+	got := ParseMDNSServices("List of discovered mdns services\n")
+	if len(got) != 0 {
+		t.Fatalf("ParseMDNSServices returned %v, want empty", got)
+	}
+}
+
+func TestParseMDNSServices(t *testing.T) {
+	raw := "List of discovered mdns services\nadb-123._adb-tls-connect._tcp.\t192.168.1.10:37123\n\nstudio-abc._adb-tls-pairing._tcp.\t192.168.1.10:45555"
+
+	got := ParseMDNSServices(raw)
+	want := []string{
+		"adb-123._adb-tls-connect._tcp.\t192.168.1.10:37123",
+		"studio-abc._adb-tls-pairing._tcp.\t192.168.1.10:45555",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("len(ParseMDNSServices) = %d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ParseMDNSServices[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
