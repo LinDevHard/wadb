@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -252,6 +255,130 @@ func TestRunPrefersConnectEndpointFromPairingHost(t *testing.T) {
 	}
 	if tried[0] != "192.168.1.20" {
 		t.Fatalf("first connect host = %q, want pairing host", tried[0])
+	}
+}
+
+func TestRunFallsBackWhenPreferredConnectEndpointFails(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	var tried []string
+
+	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
+	}
+	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+		return []mdns.Endpoint{
+			{Host: "192.168.1.99", Port: 40001},
+			{Host: "192.168.1.20", Port: 40002},
+			{Host: "192.168.1.21", Port: 40003},
+		}, nil
+	}
+	adbConnect = func(_ context.Context, _ string, host string, port int) (string, error) {
+		addr := fmt.Sprintf("%s:%d", host, port)
+		tried = append(tried, addr)
+		if addr == "192.168.1.20:40002" {
+			return "", errors.New("preferred endpoint refused connection")
+		}
+		return "connected", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		err := run(runOptions{
+			ADBPath:        "/tmp/custom-adb",
+			PairingTimeout: time.Second,
+			ConnectTimeout: time.Second,
+		})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	want := []string{"192.168.1.20:40002", "192.168.1.99:40001"}
+	if len(tried) != len(want) {
+		t.Fatalf("tried endpoints = %v, want %v", tried, want)
+	}
+	for i := range want {
+		if tried[i] != want[i] {
+			t.Fatalf("tried[%d] = %q, want %q; all tried %v", i, tried[i], want[i], tried)
+		}
+	}
+}
+
+func TestRunReturnsAllConnectFailures(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
+	}
+	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+		return []mdns.Endpoint{
+			{Host: "192.168.1.20", Port: 40002},
+			{Host: "192.168.1.99", Port: 40001},
+		}, nil
+	}
+	adbConnect = func(_ context.Context, _ string, host string, port int) (string, error) {
+		return "", fmt.Errorf("connect %s:%d failed", host, port)
+	}
+
+	var err error
+	withDiscardedOutput(t, func() {
+		err = run(runOptions{
+			ADBPath:        "/tmp/custom-adb",
+			PairingTimeout: time.Second,
+			ConnectTimeout: time.Second,
+		})
+	})
+	if err == nil {
+		t.Fatal("run succeeded, want connect failure")
+	}
+
+	got := err.Error()
+	for _, want := range []string{
+		"failed to connect to 2 discovered endpoint(s)",
+		"connect 192.168.1.20:40002 failed",
+		"connect 192.168.1.99:40001 failed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error %q does not contain %q", got, want)
+		}
+	}
+}
+
+func TestRunIgnoresDeviceNameFailureAfterSuccessfulConnect(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	var nameSerial string
+
+	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
+	}
+	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+		return []mdns.Endpoint{{Host: "192.168.1.20", Port: 40002}}, nil
+	}
+	adbConnect = func(context.Context, string, string, int) (string, error) {
+		return "connected", nil
+	}
+	adbDeviceName = func(_ context.Context, _ string, serial string) (string, error) {
+		nameSerial = serial
+		return "", errors.New("getprop unavailable")
+	}
+
+	withDiscardedOutput(t, func() {
+		err := run(runOptions{
+			ADBPath:        "/tmp/custom-adb",
+			PairingTimeout: time.Second,
+			ConnectTimeout: time.Second,
+		})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if nameSerial != "192.168.1.20:40002" {
+		t.Fatalf("DeviceName serial = %q, want 192.168.1.20:40002", nameSerial)
 	}
 }
 

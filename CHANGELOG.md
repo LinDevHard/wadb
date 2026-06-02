@@ -12,6 +12,11 @@ All notable changes to this project are documented here.
 - Added environment variable equivalents for UX flags and timeouts.
 - Prefer `_adb-tls-connect._tcp` endpoints from the same host as the pairing announce.
 - Print the connected device name when Android system properties are available.
+- Added SHA-256 checksum generation for release archives.
+
+### Changed
+
+- Marked Windows support as experimental until `adb` discovery is verified.
 
 ## [0.2.0] - 2026-05-25
 

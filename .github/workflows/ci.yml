@@ -90,6 +90,10 @@ jobs:
       - name: Show artifacts
         run: ls -la dist
 
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum wadb-* > checksums.txt
+
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

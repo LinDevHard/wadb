@@ -91,7 +91,11 @@ If none match, set `ANDROID_HOME` or install platform-tools.
 
 ## Platform support
 
-Tested on macOS. Linux should work as-is. Windows `adb` discovery is partially implemented but unverified — PRs welcome.
+| Platform | Status |
+| --- | --- |
+| macOS | Supported and tested. |
+| Linux | Supported, expected to work as-is. |
+| Windows | Experimental. `adb` discovery is partially implemented and unverified; use `--adb` or `WADB_ADB` to point at a known platform-tools install. |
 
 ## Contributing
 
