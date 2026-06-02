@@ -18,6 +18,13 @@ Requires Go (see [go.mod](go.mod) for the minimum version) and `adb` from Androi
 go install github.com/lindevhard/wadb@latest
 ```
 
+Homebrew tap support is prepared in [packaging/homebrew](packaging/homebrew). Once the tap is published:
+
+```sh
+brew tap LinDevHard/tap
+brew install wadb
+```
+
 Or build from a clone:
 
 ```sh

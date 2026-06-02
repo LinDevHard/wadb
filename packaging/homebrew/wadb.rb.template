@@ -1,0 +1,20 @@
+class Wadb < Formula
+  desc "Pair Android devices over ADB Wi-Fi via a terminal QR code"
+  homepage "https://github.com/LinDevHard/wadb"
+  url "https://github.com/LinDevHard/wadb.git",
+      tag:      "{{TAG}}",
+      revision: "{{REVISION}}"
+  license "MIT"
+  head "https://github.com/LinDevHard/wadb.git", branch: "main"
+
+  depends_on "go" => :build
+  depends_on "android-platform-tools"
+
+  def install
+    system "go", "build", *std_go_args(ldflags: "-s -w -X main.version=#{version}"), "."
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/wadb --version")
+  end
+end

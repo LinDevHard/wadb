@@ -13,10 +13,14 @@ All notable changes to this project are documented here.
 - Prefer `_adb-tls-connect._tcp` endpoints from the same host as the pairing announce.
 - Print the connected device name when Android system properties are available.
 - Added SHA-256 checksum generation for release archives.
+- Added a Homebrew formula for future tap publishing.
+- Added GoReleaser configuration for release archives, checksums, and GitHub Releases.
+- Added release workflow automation to update the Homebrew tap over SSH.
 
 ### Changed
 
 - Marked Windows support as experimental until `adb` discovery is verified.
+- Switched the release workflow from hand-rolled archive jobs to GoReleaser.
 
 ## [0.2.0] - 2026-05-25
 
