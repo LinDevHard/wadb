@@ -1,26 +1,53 @@
 class Wadb < Formula
-  desc "Pair Android devices over ADB Wi-Fi via a terminal QR code"
+  desc "Pair Android devices over ADB Wi-Fi using a terminal QR code"
   homepage "https://github.com/LinDevHard/wadb"
-  url "https://github.com/LinDevHard/wadb.git",
-      tag:      "{{TAG}}",
-      revision: "{{REVISION}}"
+  version "{{VERSION}}"
   license "MIT"
-  head "https://github.com/LinDevHard/wadb.git", branch: "main"
 
-  depends_on "go" => :build
+  livecheck do
+    url :stable
+    strategy :github_latest
+  end
+
+  on_macos do
+    on_arm do
+      url "https://github.com/LinDevHard/wadb/releases/download/{{TAG}}/wadb-{{VERSION}}-darwin-arm64.tar.gz"
+      sha256 "{{DARWIN_ARM64_SHA256}}"
+    end
+
+    on_intel do
+      url "https://github.com/LinDevHard/wadb/releases/download/{{TAG}}/wadb-{{VERSION}}-darwin-amd64.tar.gz"
+      sha256 "{{DARWIN_AMD64_SHA256}}"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/LinDevHard/wadb/releases/download/{{TAG}}/wadb-{{VERSION}}-linux-arm64.tar.gz"
+      sha256 "{{LINUX_ARM64_SHA256}}"
+    end
+
+    on_intel do
+      url "https://github.com/LinDevHard/wadb/releases/download/{{TAG}}/wadb-{{VERSION}}-linux-amd64.tar.gz"
+      sha256 "{{LINUX_AMD64_SHA256}}"
+    end
+  end
 
   def install
-    system "go", "build", *std_go_args(ldflags: "-s -w -X main.version=#{version}"), "."
+    bin.install "wadb"
+    doc.install "README.md"
   end
 
   def caveats
     <<~EOS
-      wadb requires `adb` on your PATH. Install Android platform tools with:
+      wadb shells out to adb for Android wireless pairing.
+      Install Android platform-tools if adb is not already available:
         brew install --cask android-platform-tools
     EOS
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/wadb --version")
+    assert_match "v#{version}", shell_output("#{bin}/wadb --version")
+    assert_match "pair Android devices", shell_output("#{bin}/wadb --help 2>&1")
   end
 end

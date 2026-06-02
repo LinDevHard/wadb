@@ -62,16 +62,40 @@ jobs:
           TAP_REPOSITORY: git@github.com:LinDevHard/homebrew-tap.git
           TAP_DIR: /tmp/homebrew-tap
           FORMULA_PATH: Formula/wadb.rb
-          VERSION: ${{ github.ref_name }}
-          REVISION: ${{ github.sha }}
+          TAG: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
+
+          VERSION="${TAG#v}"
+          CHECKSUMS_FILE="dist/checksums.txt"
+          checksum() {
+            awk -v file="$1" '$2 == file { print $1 }' "${CHECKSUMS_FILE}"
+          }
+
+          DARWIN_AMD64_SHA256="$(checksum "wadb-${VERSION}-darwin-amd64.tar.gz")"
+          DARWIN_ARM64_SHA256="$(checksum "wadb-${VERSION}-darwin-arm64.tar.gz")"
+          LINUX_AMD64_SHA256="$(checksum "wadb-${VERSION}-linux-amd64.tar.gz")"
+          LINUX_ARM64_SHA256="$(checksum "wadb-${VERSION}-linux-arm64.tar.gz")"
+
+          for value in \
+            "${DARWIN_AMD64_SHA256}" \
+            "${DARWIN_ARM64_SHA256}" \
+            "${LINUX_AMD64_SHA256}" \
+            "${LINUX_ARM64_SHA256}"; do
+            test -n "${value}"
+          done
+
           mkdir -p ~/.ssh
           ssh-keyscan github.com >> ~/.ssh/known_hosts
           git clone "${TAP_REPOSITORY}" "${TAP_DIR}"
           mkdir -p "${TAP_DIR}/Formula"
           sed \
-            -e "s/{{TAG}}/${VERSION}/g" \
-            -e "s/{{REVISION}}/${REVISION}/g" \
+            -e "s/{{TAG}}/${TAG}/g" \
+            -e "s/{{VERSION}}/${VERSION}/g" \
+            -e "s/{{DARWIN_AMD64_SHA256}}/${DARWIN_AMD64_SHA256}/g" \
+            -e "s/{{DARWIN_ARM64_SHA256}}/${DARWIN_ARM64_SHA256}/g" \
+            -e "s/{{LINUX_AMD64_SHA256}}/${LINUX_AMD64_SHA256}/g" \
+            -e "s/{{LINUX_ARM64_SHA256}}/${LINUX_ARM64_SHA256}/g" \
             packaging/homebrew/wadb.rb.template > "${TAP_DIR}/${FORMULA_PATH}"
           cd "${TAP_DIR}"
           git config user.name "github-actions[bot]"
