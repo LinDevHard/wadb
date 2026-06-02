@@ -59,7 +59,8 @@ The same options can be set with environment variables: `WADB_ADB`, `WADB_PAIR_O
 1. `wadb` locates the local `adb` binary.
 2. It generates a single-use service name (`studio-<random>`) and password, then renders them as a QR code with payload `WIFI:T:ADB;S:...;P:...;;` — the same format Android Studio uses.
 3. When the phone scans the QR, it advertises `_adb-tls-pairing._tcp` via mDNS. `wadb` matches the announce by instance name and runs `adb pair`.
-4. After pairing succeeds, the phone advertises `_adb-tls-connect._tcp`. `wadb` runs `adb connect` against it and prints the result.
+4. After pairing succeeds, the phone advertises `_adb-tls-connect._tcp`. `wadb` tries connect endpoints from the same IP as the pairing announce first, then falls back to other discovered endpoints.
+5. After a successful `adb connect`, `wadb` prints the result and, when available, the device name from Android system properties.
 
 The actual TLS pairing handshake is handled by `adb pair`; `wadb` only orchestrates discovery and credential generation.
 

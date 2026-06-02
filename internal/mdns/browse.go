@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"time"
 
 	"github.com/grandcat/zeroconf"
@@ -40,6 +41,18 @@ func BrowseConnect(ctx context.Context, settle time.Duration, logf Logf) ([]Endp
 	return browseCandidates(ctx, connectService, func(*zeroconf.ServiceEntry) bool {
 		return true
 	}, settle, logf)
+}
+
+// PreferHost returns endpoints ordered so entries matching preferredHost are
+// tried first while preserving discovery order inside each group.
+func PreferHost(endpoints []Endpoint, preferredHost string) []Endpoint {
+	if preferredHost == "" || len(endpoints) < 2 {
+		return endpoints
+	}
+	sort.SliceStable(endpoints, func(i, j int) bool {
+		return endpoints[i].Host == preferredHost && endpoints[j].Host != preferredHost
+	})
+	return endpoints
 }
 
 func browseUntil(ctx context.Context, service string, match func(*zeroconf.ServiceEntry) bool, logf Logf) (Endpoint, error) {

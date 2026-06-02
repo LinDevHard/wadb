@@ -27,6 +27,27 @@ type VersionInfo struct {
 	PlatformToolsMajor int
 }
 
+type DeviceInfo struct {
+	Manufacturer string
+	Model        string
+	Serial       string
+}
+
+func (d DeviceInfo) DisplayName() string {
+	parts := compactStrings(d.Manufacturer, d.Model)
+	name := strings.Join(parts, " ")
+	if name == "" {
+		name = d.Serial
+	}
+	if name == "" {
+		return ""
+	}
+	if d.Serial != "" && d.Serial != name {
+		return fmt.Sprintf("%s (%s)", name, d.Serial)
+	}
+	return name
+}
+
 // Find locates the adb binary. It checks well-known SDK locations first,
 // then $PATH, and finally Homebrew commandline-tools. Returns the first
 // path that exists and is executable.
@@ -187,4 +208,60 @@ func Connect(ctx context.Context, adbPath, host string, port int) (string, error
 		return combined, fmt.Errorf("adb connect %s: %s", addr, combined)
 	}
 	return combined, nil
+}
+
+func DeviceName(ctx context.Context, adbPath, serial string) (string, error) {
+	info, err := DeviceInfoForSerial(ctx, adbPath, serial)
+	if err != nil {
+		return "", err
+	}
+	name := info.DisplayName()
+	if name == "" {
+		return "", fmt.Errorf("adb device %s: empty device properties", serial)
+	}
+	return name, nil
+}
+
+func DeviceInfoForSerial(ctx context.Context, adbPath, serial string) (DeviceInfo, error) {
+	props := map[string]string{}
+	for _, prop := range []string{"ro.product.manufacturer", "ro.product.model", "ro.serialno"} {
+		value, err := getProp(ctx, adbPath, serial, prop)
+		if err != nil {
+			return DeviceInfo{}, err
+		}
+		props[prop] = value
+	}
+	return DeviceInfo{
+		Manufacturer: props["ro.product.manufacturer"],
+		Model:        props["ro.product.model"],
+		Serial:       props["ro.serialno"],
+	}, nil
+}
+
+func getProp(ctx context.Context, adbPath, serial, prop string) (string, error) {
+	cmd := exec.CommandContext(ctx, adbPath, "-s", serial, "shell", "getprop", prop)
+	out, err := cmd.CombinedOutput()
+	combined := strings.TrimSpace(string(out))
+	if err != nil {
+		return "", fmt.Errorf("adb -s %s shell getprop %s: %w: %s", serial, prop, err, combined)
+	}
+	return combined, nil
+}
+
+func compactStrings(values ...string) []string {
+	var out []string
+	seen := make(map[string]bool)
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
+	}
+	return out
 }

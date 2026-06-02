@@ -10,6 +10,8 @@ All notable changes to this project are documented here.
 - Added `--pair-only` to stop after successful pairing without running `adb connect`.
 - Added `--qr-ascii` for terminals that render the default compact QR poorly.
 - Added environment variable equivalents for UX flags and timeouts.
+- Prefer `_adb-tls-connect._tcp` endpoints from the same host as the pairing announce.
+- Print the connected device name when Android system properties are available.
 
 ## [0.2.0] - 2026-05-25
 

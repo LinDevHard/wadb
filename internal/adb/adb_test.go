@@ -106,3 +106,40 @@ func TestParseMDNSServices(t *testing.T) {
 		}
 	}
 }
+
+func TestDeviceInfoDisplayName(t *testing.T) {
+	tests := []struct {
+		name string
+		info DeviceInfo
+		want string
+	}{
+		{
+			name: "manufacturer model and serial",
+			info: DeviceInfo{Manufacturer: "Google", Model: "Pixel 8", Serial: "abc123"},
+			want: "Google Pixel 8 (abc123)",
+		},
+		{
+			name: "duplicate manufacturer and model",
+			info: DeviceInfo{Manufacturer: "Samsung", Model: "Samsung", Serial: "xyz"},
+			want: "Samsung (xyz)",
+		},
+		{
+			name: "serial fallback",
+			info: DeviceInfo{Serial: "abc123"},
+			want: "abc123",
+		},
+		{
+			name: "empty",
+			info: DeviceInfo{},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.info.DisplayName(); got != tt.want {
+				t.Fatalf("DisplayName = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

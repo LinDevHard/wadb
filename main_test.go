@@ -213,6 +213,48 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	}
 }
 
+func TestRunPrefersConnectEndpointFromPairingHost(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	var tried []string
+
+	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
+	}
+	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+		return []mdns.Endpoint{
+			{Host: "192.168.1.99", Port: 40001},
+			{Host: "192.168.1.20", Port: 40002},
+		}, nil
+	}
+	adbConnect = func(_ context.Context, _ string, host string, port int) (string, error) {
+		tried = append(tried, host)
+		return "connected", nil
+	}
+	adbDeviceName = func(context.Context, string, string) (string, error) {
+		return "Google Pixel 8", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		err := run(runOptions{
+			ADBPath:        "/tmp/custom-adb",
+			PairingTimeout: time.Second,
+			ConnectTimeout: time.Second,
+		})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if len(tried) != 1 {
+		t.Fatalf("tried %d endpoints, want 1: %v", len(tried), tried)
+	}
+	if tried[0] != "192.168.1.20" {
+		t.Fatalf("first connect host = %q, want pairing host", tried[0])
+	}
+}
+
 func replaceHooks(t *testing.T) func() {
 	t.Helper()
 	oldFindADB := findADB
@@ -221,6 +263,7 @@ func replaceHooks(t *testing.T) func() {
 	oldADBMDNSServices := adbMDNSServices
 	oldADBPair := adbPair
 	oldADBConnect := adbConnect
+	oldADBDeviceName := adbDeviceName
 	oldBrowsePairing := browsePairing
 	oldBrowseConnect := browseConnect
 
@@ -235,6 +278,7 @@ func replaceHooks(t *testing.T) func() {
 	adbMDNSServices = func(context.Context, string) (string, error) { return "", nil }
 	adbPair = func(context.Context, string, string, int, string) error { return nil }
 	adbConnect = func(context.Context, string, string, int) (string, error) { return "", nil }
+	adbDeviceName = func(context.Context, string, string) (string, error) { return "", nil }
 	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
 		return mdns.Endpoint{}, nil
 	}
@@ -249,6 +293,7 @@ func replaceHooks(t *testing.T) func() {
 		adbMDNSServices = oldADBMDNSServices
 		adbPair = oldADBPair
 		adbConnect = oldADBConnect
+		adbDeviceName = oldADBDeviceName
 		browsePairing = oldBrowsePairing
 		browseConnect = oldBrowseConnect
 	}

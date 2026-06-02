@@ -32,6 +32,7 @@ var (
 	adbMDNSServices = adb.MDNSServices
 	adbPair         = adb.Pair
 	adbConnect      = adb.Connect
+	adbDeviceName   = adb.DeviceName
 	browsePairing   = mdns.BrowsePairing
 	browseConnect   = mdns.BrowseConnect
 )
@@ -299,6 +300,7 @@ func run(opts runOptions) error {
 	if err != nil {
 		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nsome Android builds delay this announce; retry wadb, or run adb connect manually using the host and port shown in Wireless debugging", opts.ConnectTimeout, err)
 	}
+	connEPs = mdns.PreferHost(connEPs, pairEP.Host)
 
 	var failures []string
 	for _, connEP := range connEPs {
@@ -306,6 +308,10 @@ func run(opts runOptions) error {
 		out, err := adbConnect(ctx, adbPath, connEP.Host, connEP.Port)
 		if err == nil {
 			fmt.Println(out)
+			addr := fmt.Sprintf("%s:%d", connEP.Host, connEP.Port)
+			if name, err := adbDeviceName(ctx, adbPath, addr); err == nil && name != "" {
+				fmt.Println("Device:", name)
+			}
 			return nil
 		}
 		failures = append(failures, err.Error())
