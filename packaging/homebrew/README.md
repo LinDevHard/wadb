@@ -1,10 +1,10 @@
 # Homebrew formula
 
-This directory contains the formula intended for a future Homebrew tap, for example `LinDevHard/homebrew-tap`.
+This directory contains the formula support for the `LinDevHard/homebrew-tap` repository.
 
 `wadb.rb` is a checked-in example for the current stable tag. `wadb.rb.template` is used by the release workflow to generate the tap formula for the tag being released.
 
-To publish it:
+To publish it manually:
 
 ```sh
 mkdir -p Formula

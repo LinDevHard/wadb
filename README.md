@@ -1,7 +1,10 @@
 # wadb
 
 [![CI](https://github.com/LinDevHard/wadb/actions/workflows/ci.yml/badge.svg)](https://github.com/LinDevHard/wadb/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/LinDevHard/wadb)](https://github.com/LinDevHard/wadb/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/LinDevHard/wadb)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/lindevhard/wadb.svg)](https://pkg.go.dev/github.com/lindevhard/wadb)
+[![Go Report Card](https://goreportcard.com/badge/github.com/lindevhard/wadb)](https://goreportcard.com/report/github.com/lindevhard/wadb)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Connect an Android 11+ device over ADB Wi-Fi by scanning a QR code from your terminal.
@@ -18,7 +21,7 @@ Requires Go (see [go.mod](go.mod) for the minimum version) and `adb` from Androi
 go install github.com/lindevhard/wadb@latest
 ```
 
-Homebrew tap support is prepared in [packaging/homebrew](packaging/homebrew). Once the tap is published:
+Homebrew:
 
 ```sh
 brew tap LinDevHard/tap
