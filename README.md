@@ -42,9 +42,17 @@ Useful diagnostics:
 wadb doctor
 wadb --verbose
 wadb --pair-timeout 3m --connect-timeout 45s
+wadb --adb /path/to/adb
+wadb --pair-only
+wadb --qr-ascii
+WADB_ADB=/path/to/adb WADB_PAIR_ONLY=true wadb
 ```
 
 `doctor` checks the local `adb`, starts the server, and prints mDNS services reported by `adb mdns services`. `--verbose` prints discovered mDNS entries during pairing.
+
+Use `--adb` when you want to force a specific Android platform-tools install. Use `--pair-only` when pairing works but your device delays or hides the `_adb-tls-connect._tcp` announce; after it exits, connect manually with the host and port shown in Android's Wireless debugging screen. Use `--qr-ascii` if your terminal font or emulator renders the default compact QR poorly.
+
+The same options can be set with environment variables: `WADB_ADB`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_VERBOSE`, `WADB_PAIR_TIMEOUT`, and `WADB_CONNECT_TIMEOUT`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
 
 ## How it works
 
