@@ -313,15 +313,46 @@ func setupADB(ctx context.Context, opts runOptions) (string, error) {
 // discoverConnectEndpoints waits for _adb-tls-connect._tcp announces and
 // returns them ordered so preferredHost, when known, is tried first. Callers
 // wrap the error with a hint that fits their flow.
-func discoverConnectEndpoints(ctx context.Context, timeout time.Duration, preferredHost string, opts mdns.Options) ([]mdns.Endpoint, error) {
+func discoverConnectEndpoints(ctx context.Context, adbPath string, timeout time.Duration, preferredHost string, opts mdns.Options) ([]mdns.Endpoint, error) {
 	connCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	endpoints, err := browseConnect(connCtx, connectSettleDelay, opts)
 	if err != nil {
-		return nil, err
+		endpoints = adbReportedConnectEndpoints(ctx, adbPath, opts.Logf)
+		if len(endpoints) == 0 {
+			return nil, err
+		}
+		fmt.Fprintln(os.Stderr, "mDNS browse found nothing; using the endpoints adb reports instead.")
 	}
 	return mdns.PreferHost(endpoints, preferredHost), nil
+}
+
+// adbReportedConnectEndpoints asks adb which services it has discovered. adb
+// runs its own mDNS implementation and keeps announces cached from before wadb
+// started, so it regularly sees a device that our browse just missed. Failures
+// are swallowed: this only ever runs as a second chance after discovery
+// already failed.
+func adbReportedConnectEndpoints(ctx context.Context, adbPath string, logf mdns.Logf) []mdns.Endpoint {
+	raw, err := adbMDNSServices(ctx, adbPath)
+	if err != nil {
+		if logf != nil {
+			logf("adb mdns services failed: %v", err)
+		}
+		return nil
+	}
+
+	var endpoints []mdns.Endpoint
+	for _, service := range adb.ParseMDNSServiceEntries(raw) {
+		if service.Service != mdns.ConnectService {
+			continue
+		}
+		if logf != nil {
+			logf("adb mdns services: instance=%q host=%q port=%d", service.Instance, service.Host, service.Port)
+		}
+		endpoints = append(endpoints, mdns.Endpoint{Host: service.Host, Port: service.Port})
+	}
+	return endpoints
 }
 
 // connectToEndpoints runs adb connect against each endpoint in order and stops
@@ -363,7 +394,7 @@ func connect(opts runOptions) error {
 	}
 
 	fmt.Println("Looking for devices announcing _adb-tls-connect._tcp...")
-	endpoints, err := discoverConnectEndpoints(ctx, opts.ConnectTimeout, "", mdnsOpts)
+	endpoints, err := discoverConnectEndpoints(ctx, adbPath, opts.ConnectTimeout, "", mdnsOpts)
 	if err != nil {
 		return fmt.Errorf("no _adb-tls-connect._tcp announce appeared within %s: %w\nenable Wireless debugging on a device already paired with this host, or run wadb without arguments to pair a new one\nif a VPN or container bridge is active, limit discovery with --iface (wadb doctor lists the candidates)", opts.ConnectTimeout, err)
 	}
@@ -422,7 +453,7 @@ func run(opts runOptions) error {
 	}
 
 	fmt.Println("Waiting for device to announce on _adb-tls-connect._tcp...")
-	connEPs, err := discoverConnectEndpoints(ctx, opts.ConnectTimeout, pairEP.Host, mdnsOpts)
+	connEPs, err := discoverConnectEndpoints(ctx, adbPath, opts.ConnectTimeout, pairEP.Host, mdnsOpts)
 	if err != nil {
 		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nsome Android builds delay this announce; retry with wadb connect, or run adb connect manually using the host and port shown in Wireless debugging", opts.ConnectTimeout, err)
 	}

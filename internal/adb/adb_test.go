@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -104,6 +105,41 @@ func TestParseMDNSServices(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("ParseMDNSServices[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestParseMDNSServiceEntries(t *testing.T) {
+	raw := strings.Join([]string{
+		"List of discovered mdns services",
+		"adb-39131FDJH000GV-vWTUFy\t_adb-tls-connect._tcp\t192.168.1.135:37419",
+		"studio-AbCdEf1234   _adb-tls-pairing._tcp.   192.168.1.135:41255",
+		"adb-ipv6-device\t_adb-tls-connect._tcp\t[fe80::c87:6e8e:bdef:22e6]:44001",
+		"",
+		"truncated line",
+		"adb-bad-port\t_adb-tls-connect._tcp\t192.168.1.135:not-a-port",
+		"adb-no-port\t_adb-tls-connect._tcp\t192.168.1.135",
+	}, "\n")
+
+	want := []MDNSService{
+		{Instance: "adb-39131FDJH000GV-vWTUFy", Service: "_adb-tls-connect._tcp", Host: "192.168.1.135", Port: 37419},
+		{Instance: "studio-AbCdEf1234", Service: "_adb-tls-pairing._tcp", Host: "192.168.1.135", Port: 41255},
+		{Instance: "adb-ipv6-device", Service: "_adb-tls-connect._tcp", Host: "fe80::c87:6e8e:bdef:22e6", Port: 44001},
+	}
+
+	got := ParseMDNSServiceEntries(raw)
+	if len(got) != len(want) {
+		t.Fatalf("parsed %d entries, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("entry[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestParseMDNSServiceEntriesWithoutServices(t *testing.T) {
+	if got := ParseMDNSServiceEntries("List of discovered mdns services\n\n"); len(got) != 0 {
+		t.Fatalf("parsed %d entries from an empty list: %+v", len(got), got)
 	}
 }
 

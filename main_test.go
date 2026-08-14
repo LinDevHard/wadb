@@ -597,6 +597,108 @@ func TestConnectTriesEveryDiscoveredEndpoint(t *testing.T) {
 	}
 }
 
+func TestConnectFallsBackToServicesReportedByADB(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	var tried []string
+
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
+		return nil, errors.New("context deadline exceeded")
+	}
+	adbMDNSServices = func(context.Context, string) (string, error) {
+		return strings.Join([]string{
+			"List of discovered mdns services",
+			"studio-AbCdEf1234\t_adb-tls-pairing._tcp\t192.168.1.50:41255",
+			"adb-serial-vWTUFy\t_adb-tls-connect._tcp\t192.168.1.50:40002",
+		}, "\n"), nil
+	}
+	adbConnect = func(_ context.Context, _ string, host string, port int) (string, error) {
+		tried = append(tried, fmt.Sprintf("%s:%d", host, port))
+		return "connected", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		if err := connect(runOptions{ADBPath: "/tmp/connect-adb", ConnectTimeout: time.Second}); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+
+	if len(tried) != 1 || tried[0] != "192.168.1.50:40002" {
+		t.Fatalf("tried endpoints = %v, want [192.168.1.50:40002]", tried)
+	}
+}
+
+func TestRunFallsBackToServicesReportedByADB(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	var tried []string
+
+	browsePairing = func(context.Context, string, mdns.Options) (mdns.Endpoint, error) {
+		return mdns.Endpoint{Host: "192.168.1.60", Port: 37123}, nil
+	}
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
+		return nil, errors.New("context deadline exceeded")
+	}
+	adbMDNSServices = func(context.Context, string) (string, error) {
+		return strings.Join([]string{
+			"List of discovered mdns services",
+			"adb-other-device\t_adb-tls-connect._tcp\t192.168.1.99:40001",
+			"adb-paired-device\t_adb-tls-connect._tcp\t192.168.1.60:40002",
+		}, "\n"), nil
+	}
+	adbConnect = func(_ context.Context, _ string, host string, port int) (string, error) {
+		tried = append(tried, fmt.Sprintf("%s:%d", host, port))
+		return "connected", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		err := run(runOptions{
+			ADBPath:        "/tmp/custom-adb",
+			PairingTimeout: time.Second,
+			ConnectTimeout: time.Second,
+		})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if len(tried) != 1 || tried[0] != "192.168.1.60:40002" {
+		t.Fatalf("tried endpoints = %v, want the pairing host first", tried)
+	}
+}
+
+func TestConnectKeepsDiscoveryErrorWhenADBReportsNothingUseful(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
+		return nil, errors.New("context deadline exceeded")
+	}
+	adbMDNSServices = func(context.Context, string) (string, error) {
+		return strings.Join([]string{
+			"List of discovered mdns services",
+			"studio-AbCdEf1234\t_adb-tls-pairing._tcp\t192.168.1.50:41255",
+		}, "\n"), nil
+	}
+	adbConnect = func(context.Context, string, string, int) (string, error) {
+		t.Fatal("connect ran adb connect against a pairing endpoint")
+		return "", nil
+	}
+
+	var err error
+	withDiscardedOutput(t, func() {
+		err = connect(runOptions{ADBPath: "/tmp/connect-adb", ConnectTimeout: time.Second})
+	})
+	if err == nil {
+		t.Fatal("connect succeeded without a connect endpoint")
+	}
+	if !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("error %q lost the original discovery failure", err)
+	}
+}
+
 func TestConnectHintsAtPairingWhenNoDeviceAnnounces(t *testing.T) {
 	restore := replaceHooks(t)
 	defer restore()

@@ -10,6 +10,10 @@ All notable changes to this project are documented here.
 - Added `--iface` (env: `WADB_IFACE`) to browse mDNS on a single network interface when a VPN, container bridge, or second NIC swallows the multicast traffic.
 - `wadb doctor` now lists the network interfaces worth passing to `--iface`, and validates one when given.
 
+### Changed
+
+- Fall back to the endpoints reported by `adb mdns services` when the built-in mDNS browse finds no `_adb-tls-connect._tcp` announce.
+
 ## [1.0.0] - 2026-06-02
 
 ### Added

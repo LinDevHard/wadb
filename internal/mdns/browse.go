@@ -10,10 +10,13 @@ import (
 	"github.com/grandcat/zeroconf"
 )
 
+// The two mDNS services an Android device advertises for ADB Wi-Fi: one while
+// it waits to be paired, one once it is ready to accept a connection.
 const (
-	pairingService = "_adb-tls-pairing._tcp"
-	connectService = "_adb-tls-connect._tcp"
-	domain         = "local."
+	PairingService = "_adb-tls-pairing._tcp"
+	ConnectService = "_adb-tls-connect._tcp"
+
+	domain = "local."
 )
 
 type Endpoint struct {
@@ -50,7 +53,7 @@ func (o Options) resolver() (*zeroconf.Resolver, error) {
 // the QR's `S:` field verbatim as the instance name, so matching by
 // instance avoids picking up a different phone on the same Wi-Fi.
 func BrowsePairing(ctx context.Context, wantInstance string, opts Options) (Endpoint, error) {
-	return browseUntil(ctx, pairingService, func(e *zeroconf.ServiceEntry) bool {
+	return browseUntil(ctx, PairingService, func(e *zeroconf.ServiceEntry) bool {
 		return e.Instance == wantInstance
 	}, opts)
 }
@@ -60,7 +63,7 @@ func BrowsePairing(ctx context.Context, wantInstance string, opts Options) (Endp
 // since browse is started only after a successful pair, the first announces
 // usually include the device we just paired with.
 func BrowseConnect(ctx context.Context, settle time.Duration, opts Options) ([]Endpoint, error) {
-	return browseCandidates(ctx, connectService, func(*zeroconf.ServiceEntry) bool {
+	return browseCandidates(ctx, ConnectService, func(*zeroconf.ServiceEntry) bool {
 		return true
 	}, settle, opts)
 }

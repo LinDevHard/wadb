@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -149,6 +150,47 @@ func MDNSServices(ctx context.Context, adbPath string) (string, error) {
 		return combined, fmt.Errorf("adb mdns services: %w: %s", err, combined)
 	}
 	return combined, nil
+}
+
+// MDNSService is one entry of `adb mdns services`.
+type MDNSService struct {
+	Instance string
+	Service  string
+	Host     string
+	Port     int
+}
+
+// ParseMDNSServiceEntries parses the table printed by `adb mdns services`:
+// an instance name, a service name, and a host:port address, separated by
+// whitespace. The column layout has shifted between platform-tools releases
+// and is not a documented interface, so unparsable lines are skipped rather
+// than reported — the caller treats this output as a hint, not a source of
+// truth.
+func ParseMDNSServiceEntries(raw string) []MDNSService {
+	var services []MDNSService
+	for _, line := range ParseMDNSServices(raw) {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		host, port, err := net.SplitHostPort(fields[len(fields)-1])
+		if err != nil {
+			continue
+		}
+		portNum, err := strconv.Atoi(port)
+		if err != nil {
+			continue
+		}
+		services = append(services, MDNSService{
+			// Instance names may contain spaces; the two trailing columns
+			// are the fixed part of the line.
+			Instance: strings.Join(fields[:len(fields)-2], " "),
+			Service:  strings.TrimSuffix(fields[len(fields)-2], "."),
+			Host:     host,
+			Port:     portNum,
+		})
+	}
+	return services
 }
 
 func ParseMDNSServices(raw string) []string {
