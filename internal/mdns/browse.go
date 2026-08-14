@@ -23,24 +23,118 @@ type Endpoint struct {
 
 type Logf func(format string, args ...any)
 
+// Options tunes how browsing is performed.
+type Options struct {
+	// Iface restricts browsing to a single network interface, by name.
+	// Browsing every interface is the right default, until a VPN, a container
+	// bridge, or a second NIC starts swallowing the multicast traffic.
+	Iface string
+	// Logf, when set, receives every discovered service entry.
+	Logf Logf
+}
+
+// resolver builds a zeroconf resolver bound to the requested interface.
+func (o Options) resolver() (*zeroconf.Resolver, error) {
+	if o.Iface == "" {
+		return zeroconf.NewResolver()
+	}
+	iface, err := lookupInterface(o.Iface)
+	if err != nil {
+		return nil, err
+	}
+	return zeroconf.NewResolver(zeroconf.SelectIfaces([]net.Interface{iface}))
+}
+
 // BrowsePairing watches _adb-tls-pairing._tcp until an entry with Instance
 // equal to wantInstance appears (or ctx expires). The Android device uses
 // the QR's `S:` field verbatim as the instance name, so matching by
 // instance avoids picking up a different phone on the same Wi-Fi.
-func BrowsePairing(ctx context.Context, wantInstance string, logf Logf) (Endpoint, error) {
+func BrowsePairing(ctx context.Context, wantInstance string, opts Options) (Endpoint, error) {
 	return browseUntil(ctx, pairingService, func(e *zeroconf.ServiceEntry) bool {
 		return e.Instance == wantInstance
-	}, logf)
+	}, opts)
 }
 
 // BrowseConnect watches _adb-tls-connect._tcp and returns discovered entries.
 // The connect instance name is `adb-<serial>-<rand>`, unknown beforehand;
 // since browse is started only after a successful pair, the first announces
 // usually include the device we just paired with.
-func BrowseConnect(ctx context.Context, settle time.Duration, logf Logf) ([]Endpoint, error) {
+func BrowseConnect(ctx context.Context, settle time.Duration, opts Options) ([]Endpoint, error) {
 	return browseCandidates(ctx, connectService, func(*zeroconf.ServiceEntry) bool {
 		return true
-	}, settle, logf)
+	}, settle, opts)
+}
+
+// CheckInterface reports whether an interface name can carry mDNS traffic.
+func CheckInterface(name string) error {
+	_, err := lookupInterface(name)
+	return err
+}
+
+// Interface is a network interface that can carry mDNS traffic.
+type Interface struct {
+	Name string
+	IPs  []string
+}
+
+// MulticastInterfaces lists the interfaces a device could plausibly be reached
+// on — up, multicast-capable, not loopback, and holding a routable address.
+// Interfaces with only link-local addresses (VPN tunnels, AWDL) are left out to
+// keep the list short; Options.Iface still accepts them if a setup needs one.
+func MulticastInterfaces() ([]Interface, error) {
+	all, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("list interfaces: %w", err)
+	}
+
+	var out []Interface
+	for _, iface := range all {
+		if !carriesMulticast(iface) || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		var ips []string
+		for _, addr := range addrs {
+			ipnet, ok := addr.(*net.IPNet)
+			if !ok || !isRoutable(ipnet.IP) {
+				continue
+			}
+			ips = append(ips, ipnet.IP.String())
+		}
+		if len(ips) == 0 {
+			continue
+		}
+		out = append(out, Interface{Name: iface.Name, IPs: ips})
+	}
+	return out, nil
+}
+
+func isRoutable(ip net.IP) bool {
+	return ip != nil && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.IsUnspecified()
+}
+
+// lookupInterface resolves an interface by name and rejects the ones that
+// cannot carry mDNS, so a typo or a sleeping interface fails immediately
+// instead of looking like a silent discovery timeout.
+func lookupInterface(name string) (net.Interface, error) {
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return net.Interface{}, fmt.Errorf("interface %q not found: %w", name, err)
+	}
+	if iface.Flags&net.FlagUp == 0 {
+		return net.Interface{}, fmt.Errorf("interface %q is down", name)
+	}
+	if iface.Flags&net.FlagMulticast == 0 {
+		return net.Interface{}, fmt.Errorf("interface %q does not support multicast", name)
+	}
+	return *iface, nil
+}
+
+func carriesMulticast(iface net.Interface) bool {
+	return iface.Flags&net.FlagUp != 0 && iface.Flags&net.FlagMulticast != 0
 }
 
 // PreferHost returns endpoints ordered so entries matching preferredHost are
@@ -55,8 +149,8 @@ func PreferHost(endpoints []Endpoint, preferredHost string) []Endpoint {
 	return endpoints
 }
 
-func browseUntil(ctx context.Context, service string, match func(*zeroconf.ServiceEntry) bool, logf Logf) (Endpoint, error) {
-	resolver, err := zeroconf.NewResolver(nil)
+func browseUntil(ctx context.Context, service string, match func(*zeroconf.ServiceEntry) bool, opts Options) (Endpoint, error) {
+	resolver, err := opts.resolver()
 	if err != nil {
 		return Endpoint{}, fmt.Errorf("mdns resolver: %w", err)
 	}
@@ -78,10 +172,10 @@ func browseUntil(ctx context.Context, service string, match func(*zeroconf.Servi
 				return Endpoint{}, fmt.Errorf("mdns browse %s: channel closed", service)
 			}
 			if e == nil || !match(e) {
-				logEntry(logf, service, e)
+				logEntry(opts.Logf, service, e)
 				continue
 			}
-			logEntry(logf, service, e)
+			logEntry(opts.Logf, service, e)
 			host := pickAddr(e)
 			if host == "" {
 				continue
@@ -91,8 +185,8 @@ func browseUntil(ctx context.Context, service string, match func(*zeroconf.Servi
 	}
 }
 
-func browseCandidates(ctx context.Context, service string, match func(*zeroconf.ServiceEntry) bool, settle time.Duration, logf Logf) ([]Endpoint, error) {
-	resolver, err := zeroconf.NewResolver(nil)
+func browseCandidates(ctx context.Context, service string, match func(*zeroconf.ServiceEntry) bool, settle time.Duration, opts Options) ([]Endpoint, error) {
+	resolver, err := opts.resolver()
 	if err != nil {
 		return nil, fmt.Errorf("mdns resolver: %w", err)
 	}
@@ -125,7 +219,7 @@ func browseCandidates(ctx context.Context, service string, match func(*zeroconf.
 				}
 				return nil, fmt.Errorf("mdns browse %s: channel closed", service)
 			}
-			logEntry(logf, service, e)
+			logEntry(opts.Logf, service, e)
 			if e == nil || !match(e) {
 				continue
 			}

@@ -61,6 +61,7 @@ Useful diagnostics:
 ```sh
 wadb doctor
 wadb --verbose
+wadb --iface en0
 wadb --pair-timeout 3m --connect-timeout 45s
 wadb --adb /path/to/adb
 wadb --pair-only
@@ -68,11 +69,13 @@ wadb --qr-ascii
 WADB_ADB=/path/to/adb WADB_PAIR_ONLY=true wadb
 ```
 
-`doctor` checks the local `adb`, starts the server, and prints mDNS services reported by `adb mdns services`. `--verbose` prints discovered mDNS entries during pairing.
+`doctor` checks the local `adb`, lists the network interfaces worth browsing, starts the server, and prints mDNS services reported by `adb mdns services`. `--verbose` prints discovered mDNS entries during pairing.
 
-Use `--adb` when you want to force a specific Android platform-tools install. Use `--pair-only` when pairing works but your device delays or hides the `_adb-tls-connect._tcp` announce; after it exits, connect manually with the host and port shown in Android's Wireless debugging screen. Use `--qr-ascii` if your terminal font or emulator renders the default compact QR poorly.
+Use `--iface` when discovery times out on a host with more than one network path — a VPN tunnel, a container bridge, or a second NIC can swallow the multicast traffic before it reaches your Wi-Fi interface. `wadb doctor` lists the candidate names, and an unusable one fails immediately instead of timing out.
 
-The same options can be set with environment variables: `WADB_ADB`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_VERBOSE`, `WADB_PAIR_TIMEOUT`, and `WADB_CONNECT_TIMEOUT`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
+Use `--adb` to force a specific Android platform-tools install. Use `--pair-only` when pairing works but your device delays or hides the `_adb-tls-connect._tcp` announce; after it exits, connect manually with the host and port shown in Android's Wireless debugging screen. Use `--qr-ascii` if your terminal font or emulator renders the default compact QR poorly.
+
+The same options can be set with environment variables: `WADB_ADB`, `WADB_IFACE`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_VERBOSE`, `WADB_PAIR_TIMEOUT`, and `WADB_CONNECT_TIMEOUT`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
 
 ## How it works
 
@@ -105,7 +108,7 @@ If none match, set `ANDROID_HOME` or install platform-tools.
 
 | Symptom | Likely cause |
 | --- | --- |
-| *"did not see device announce within 2m"* | Phone could not reach the host over mDNS. Check same Wi-Fi subnet, no AP isolation, firewall not blocking UDP 5353. |
+| *"did not see device announce within 2m"* | Phone could not reach the host over mDNS. Check same Wi-Fi subnet, no AP isolation, firewall not blocking UDP 5353. With a VPN or Docker running, try `--iface`. |
 | `adb pair` fails immediately | Stale daemon. Run `adb kill-server` and retry. |
 | Connect timeout after a successful pair | Some Android builds delay the connect announce. Run `wadb connect` (no need to pair again), or run `adb connect <ip>:<port>` manually once Wireless debugging shows the device's port. |
 | `wadb connect` finds nothing | The device is not advertising. Open Wireless debugging on the phone to wake the announce, and confirm the device was paired with this host. |

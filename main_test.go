@@ -34,7 +34,7 @@ func TestRunPairOnlyUsesExplicitADBPathAndSkipsConnect(t *testing.T) {
 		started = true
 		return nil
 	}
-	browsePairing = func(_ context.Context, _ string, _ mdns.Logf) (mdns.Endpoint, error) {
+	browsePairing = func(_ context.Context, _ string, _ mdns.Options) (mdns.Endpoint, error) {
 		return mdns.Endpoint{Host: "192.168.1.10", Port: 37123}, nil
 	}
 	adbPair = func(_ context.Context, adbPath, host string, port int, password string) error {
@@ -107,7 +107,7 @@ func TestDoctorUsesExplicitADBPath(t *testing.T) {
 	}
 
 	withDiscardedOutput(t, func() {
-		if err := doctor(wantADB, false); err != nil {
+		if err := doctor(runOptions{ADBPath: wantADB}); err != nil {
 			t.Fatalf("doctor: %v", err)
 		}
 	})
@@ -122,6 +122,7 @@ func TestDoctorUsesExplicitADBPath(t *testing.T) {
 
 func TestLoadEnvOptions(t *testing.T) {
 	t.Setenv("WADB_ADB", " /tmp/env-adb ")
+	t.Setenv("WADB_IFACE", " en0 ")
 	t.Setenv("WADB_PAIR_ONLY", "true")
 	t.Setenv("WADB_QR_ASCII", "1")
 	t.Setenv("WADB_VERBOSE", "false")
@@ -134,6 +135,9 @@ func TestLoadEnvOptions(t *testing.T) {
 	}
 	if got.ADBPath != "/tmp/env-adb" {
 		t.Fatalf("ADBPath = %q, want /tmp/env-adb", got.ADBPath)
+	}
+	if got.Iface != "en0" {
+		t.Fatalf("Iface = %q, want en0", got.Iface)
 	}
 	if !got.PairOnly {
 		t.Fatal("PairOnly = false, want true")
@@ -168,6 +172,7 @@ func TestLoadEnvOptionsRejectsInvalidValues(t *testing.T) {
 func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	envOpts := runOptions{
 		ADBPath:        "/tmp/env-adb",
+		Iface:          "en0",
 		PairingTimeout: 3 * time.Minute,
 		ConnectTimeout: 45 * time.Second,
 		PairOnly:       true,
@@ -177,6 +182,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	adbPath := fs.String("adb", envOpts.ADBPath, "")
+	iface := fs.String("iface", envOpts.Iface, "")
 	pairOnly := fs.Bool("pair-only", envOpts.PairOnly, "")
 	qrASCII := fs.Bool("qr-ascii", envOpts.QRASCII, "")
 	verbose := fs.Bool("verbose", envOpts.Verbose, "")
@@ -185,6 +191,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 
 	if err := fs.Parse([]string{
 		"--adb", "/tmp/flag-adb",
+		"--iface", "en1",
 		"--pair-only=false",
 		"--qr-ascii=false",
 		"--verbose=false",
@@ -196,6 +203,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 
 	got := runOptions{
 		ADBPath:        *adbPath,
+		Iface:          *iface,
 		PairingTimeout: *pairingTimeout,
 		ConnectTimeout: *connectTimeout,
 		PairOnly:       *pairOnly,
@@ -204,6 +212,9 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	}
 	if got.ADBPath != "/tmp/flag-adb" {
 		t.Fatalf("ADBPath = %q, want /tmp/flag-adb", got.ADBPath)
+	}
+	if got.Iface != "en1" {
+		t.Fatalf("Iface = %q, want en1", got.Iface)
 	}
 	if got.PairOnly || got.QRASCII || got.Verbose {
 		t.Fatalf("bool flags did not override env defaults: %+v", got)
@@ -222,10 +233,10 @@ func TestRunPrefersConnectEndpointFromPairingHost(t *testing.T) {
 
 	var tried []string
 
-	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+	browsePairing = func(context.Context, string, mdns.Options) (mdns.Endpoint, error) {
 		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
 	}
-	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return []mdns.Endpoint{
 			{Host: "192.168.1.99", Port: 40001},
 			{Host: "192.168.1.20", Port: 40002},
@@ -264,10 +275,10 @@ func TestRunFallsBackWhenPreferredConnectEndpointFails(t *testing.T) {
 
 	var tried []string
 
-	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+	browsePairing = func(context.Context, string, mdns.Options) (mdns.Endpoint, error) {
 		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
 	}
-	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return []mdns.Endpoint{
 			{Host: "192.168.1.99", Port: 40001},
 			{Host: "192.168.1.20", Port: 40002},
@@ -309,10 +320,10 @@ func TestRunReturnsAllConnectFailures(t *testing.T) {
 	restore := replaceHooks(t)
 	defer restore()
 
-	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+	browsePairing = func(context.Context, string, mdns.Options) (mdns.Endpoint, error) {
 		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
 	}
-	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return []mdns.Endpoint{
 			{Host: "192.168.1.20", Port: 40002},
 			{Host: "192.168.1.99", Port: 40001},
@@ -352,10 +363,10 @@ func TestRunIgnoresDeviceNameFailureAfterSuccessfulConnect(t *testing.T) {
 
 	var nameSerial string
 
-	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+	browsePairing = func(context.Context, string, mdns.Options) (mdns.Endpoint, error) {
 		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
 	}
-	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return []mdns.Endpoint{{Host: "192.168.1.20", Port: 40002}}, nil
 	}
 	adbConnect = func(context.Context, string, string, int) (string, error) {
@@ -382,6 +393,121 @@ func TestRunIgnoresDeviceNameFailureAfterSuccessfulConnect(t *testing.T) {
 	}
 }
 
+func TestRunBrowsesOnlyTheRequestedInterface(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	wantIface := "en0"
+	var pairingIface, connectIface string
+
+	browsePairing = func(_ context.Context, _ string, opts mdns.Options) (mdns.Endpoint, error) {
+		pairingIface = opts.Iface
+		return mdns.Endpoint{Host: "192.168.1.20", Port: 37123}, nil
+	}
+	browseConnect = func(_ context.Context, _ time.Duration, opts mdns.Options) ([]mdns.Endpoint, error) {
+		connectIface = opts.Iface
+		return []mdns.Endpoint{{Host: "192.168.1.20", Port: 40002}}, nil
+	}
+	adbConnect = func(context.Context, string, string, int) (string, error) {
+		return "connected", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		err := run(runOptions{
+			ADBPath:        "/tmp/custom-adb",
+			Iface:          wantIface,
+			PairingTimeout: time.Second,
+			ConnectTimeout: time.Second,
+		})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if pairingIface != wantIface {
+		t.Fatalf("pairing browse iface = %q, want %q", pairingIface, wantIface)
+	}
+	if connectIface != wantIface {
+		t.Fatalf("connect browse iface = %q, want %q", connectIface, wantIface)
+	}
+}
+
+func TestConnectBrowsesOnlyTheRequestedInterface(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	wantIface := "en0"
+	var gotIface string
+
+	browseConnect = func(_ context.Context, _ time.Duration, opts mdns.Options) ([]mdns.Endpoint, error) {
+		gotIface = opts.Iface
+		return []mdns.Endpoint{{Host: "192.168.1.30", Port: 40002}}, nil
+	}
+	adbConnect = func(context.Context, string, string, int) (string, error) {
+		return "connected", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		err := connect(runOptions{
+			ADBPath:        "/tmp/connect-adb",
+			Iface:          wantIface,
+			ConnectTimeout: time.Second,
+		})
+		if err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+
+	if gotIface != wantIface {
+		t.Fatalf("connect browse iface = %q, want %q", gotIface, wantIface)
+	}
+}
+
+func TestMDNSOptionsLogsOnlyWhenVerbose(t *testing.T) {
+	got, err := (runOptions{}).mdnsOptions()
+	if err != nil {
+		t.Fatalf("mdnsOptions: %v", err)
+	}
+	if got.Logf != nil {
+		t.Fatal("Logf is set without --verbose")
+	}
+
+	got, err = (runOptions{Verbose: true}).mdnsOptions()
+	if err != nil {
+		t.Fatalf("mdnsOptions: %v", err)
+	}
+	if got.Logf == nil {
+		t.Fatal("Logf is nil with --verbose")
+	}
+}
+
+func TestMDNSOptionsRejectsUnusableInterface(t *testing.T) {
+	if _, err := (runOptions{Iface: "wadb-does-not-exist0"}).mdnsOptions(); err == nil {
+		t.Fatal("mdnsOptions accepted an unknown interface")
+	}
+}
+
+func TestConnectFailsBeforeStartingADBOnBadInterface(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	adbStartServer = func(context.Context, string) error {
+		t.Fatal("adb server was started despite an unusable --iface")
+		return nil
+	}
+
+	var err error
+	withDiscardedOutput(t, func() {
+		err = connect(runOptions{ADBPath: "/tmp/connect-adb", Iface: "wadb-does-not-exist0", ConnectTimeout: time.Second})
+	})
+	if err == nil {
+		t.Fatal("connect succeeded with an unusable --iface")
+	}
+	if !strings.Contains(err.Error(), "wadb-does-not-exist0") {
+		t.Fatalf("error %q does not name the interface", err)
+	}
+}
+
 func TestConnectSkipsPairingAndConnectsDiscoveredDevice(t *testing.T) {
 	restore := replaceHooks(t)
 	defer restore()
@@ -397,7 +523,7 @@ func TestConnectSkipsPairingAndConnectsDiscoveredDevice(t *testing.T) {
 		started = true
 		return nil
 	}
-	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+	browsePairing = func(context.Context, string, mdns.Options) (mdns.Endpoint, error) {
 		t.Fatal("connect browsed for a pairing announce")
 		return mdns.Endpoint{}, nil
 	}
@@ -405,7 +531,7 @@ func TestConnectSkipsPairingAndConnectsDiscoveredDevice(t *testing.T) {
 		t.Fatal("connect ran adb pair")
 		return nil
 	}
-	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return []mdns.Endpoint{{Host: "192.168.1.30", Port: 40002}}, nil
 	}
 	adbConnect = func(_ context.Context, adbPath string, host string, port int) (string, error) {
@@ -439,7 +565,7 @@ func TestConnectTriesEveryDiscoveredEndpoint(t *testing.T) {
 
 	var tried []string
 
-	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return []mdns.Endpoint{
 			{Host: "192.168.1.40", Port: 40001},
 			{Host: "192.168.1.41", Port: 40002},
@@ -475,7 +601,7 @@ func TestConnectHintsAtPairingWhenNoDeviceAnnounces(t *testing.T) {
 	restore := replaceHooks(t)
 	defer restore()
 
-	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return nil, errors.New("context deadline exceeded")
 	}
 	adbConnect = func(context.Context, string, string, int) (string, error) {
@@ -527,10 +653,10 @@ func replaceHooks(t *testing.T) func() {
 	adbPair = func(context.Context, string, string, int, string) error { return nil }
 	adbConnect = func(context.Context, string, string, int) (string, error) { return "", nil }
 	adbDeviceName = func(context.Context, string, string) (string, error) { return "", nil }
-	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+	browsePairing = func(context.Context, string, mdns.Options) (mdns.Endpoint, error) {
 		return mdns.Endpoint{}, nil
 	}
-	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return nil, nil
 	}
 

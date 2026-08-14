@@ -47,6 +47,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.BoolVar(showVersion, "v", false, "shorthand for --version")
 	adbPath := flag.String("adb", envOpts.ADBPath, "path to adb binary (env: WADB_ADB; default: auto-detect)")
+	iface := flag.String("iface", envOpts.Iface, "network interface to browse for mDNS (env: WADB_IFACE; default: all)")
 	pairOnly := flag.Bool("pair-only", envOpts.PairOnly, "pair the device, then exit without running adb connect (env: WADB_PAIR_ONLY)")
 	qrASCII := flag.Bool("qr-ascii", envOpts.QRASCII, "render the QR code with plain ASCII blocks (env: WADB_QR_ASCII)")
 	verbose := flag.Bool("verbose", envOpts.Verbose, "print discovered mDNS service entries to stderr (env: WADB_VERBOSE)")
@@ -62,6 +63,7 @@ func main() {
 
 	opts := runOptions{
 		ADBPath:        *adbPath,
+		Iface:          *iface,
 		PairingTimeout: *pairingTimeout,
 		ConnectTimeout: *connectTimeout,
 		PairOnly:       *pairOnly,
@@ -75,7 +77,7 @@ func main() {
 	case flag.NArg() == 1 && flag.Arg(0) == "connect":
 		err = connect(opts)
 	case flag.NArg() == 1 && flag.Arg(0) == "doctor":
-		err = doctor(opts.ADBPath, opts.Verbose)
+		err = doctor(opts)
 	default:
 		fmt.Fprintf(os.Stderr, "error: unexpected positional arguments: %v\n\n", flag.Args())
 		flag.Usage()
@@ -109,14 +111,16 @@ func usage() {
 	flag.PrintDefaults()
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Environment:")
-	fmt.Fprintln(w, "  WADB_ADB, WADB_PAIR_ONLY, WADB_QR_ASCII, WADB_VERBOSE, WADB_PAIR_TIMEOUT, WADB_CONNECT_TIMEOUT")
+	fmt.Fprintln(w, "  WADB_ADB, WADB_IFACE, WADB_PAIR_ONLY, WADB_QR_ASCII, WADB_VERBOSE, WADB_PAIR_TIMEOUT,")
+	fmt.Fprintln(w, "  WADB_CONNECT_TIMEOUT")
 	fmt.Fprintln(w, "  CLI flags override environment values.")
 }
 
-func doctor(adbPath string, verbose bool) error {
+func doctor(opts runOptions) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	adbPath := opts.ADBPath
 	if adbPath == "" {
 		found, err := findADB()
 		if err != nil {
@@ -136,10 +140,12 @@ func doctor(adbPath string, verbose bool) error {
 		}
 	} else {
 		fmt.Println("platform-tools: unknown")
-		if verbose {
+		if opts.Verbose {
 			fmt.Println(adbVersion.Raw)
 		}
 	}
+
+	reportInterfaces(opts.Iface)
 
 	if err := adbStartServer(ctx, adbPath); err != nil {
 		return err
@@ -163,13 +169,60 @@ func doctor(adbPath string, verbose bool) error {
 	return nil
 }
 
+// reportInterfaces validates an explicit --iface, or lists the interfaces
+// worth passing to it. Discovery failures are usually a multicast routing
+// problem, so knowing which interfaces exist is half the diagnosis.
+func reportInterfaces(iface string) {
+	if iface != "" {
+		if err := mdns.CheckInterface(iface); err != nil {
+			fmt.Println("interface: error:", err)
+			return
+		}
+		fmt.Println("interface:", iface)
+		return
+	}
+
+	ifaces, err := mdns.MulticastInterfaces()
+	if err != nil {
+		fmt.Println("interfaces: warning:", err)
+		return
+	}
+	if len(ifaces) == 0 {
+		fmt.Println("interfaces: none are up and multicast-capable")
+		return
+	}
+	fmt.Println("interfaces (candidates for --iface):")
+	for _, i := range ifaces {
+		fmt.Printf("  %s %s\n", i.Name, strings.Join(i.IPs, " "))
+	}
+}
+
 type runOptions struct {
 	ADBPath        string
+	Iface          string
 	PairingTimeout time.Duration
 	ConnectTimeout time.Duration
 	PairOnly       bool
 	QRASCII        bool
 	Verbose        bool
+}
+
+// mdnsOptions builds the discovery options shared by the pair and connect
+// flows, rejecting an unusable --iface here rather than letting it surface
+// later as a discovery timeout that blames the network.
+func (o runOptions) mdnsOptions() (mdns.Options, error) {
+	if o.Iface != "" {
+		if err := mdns.CheckInterface(o.Iface); err != nil {
+			return mdns.Options{}, err
+		}
+	}
+	opts := mdns.Options{Iface: o.Iface}
+	if o.Verbose {
+		opts.Logf = func(format string, args ...any) {
+			fmt.Fprintf(os.Stderr, format+"\n", args...)
+		}
+	}
+	return opts, nil
 }
 
 func loadEnvOptions() (runOptions, error) {
@@ -179,6 +232,7 @@ func loadEnvOptions() (runOptions, error) {
 	}
 
 	opts.ADBPath = strings.TrimSpace(os.Getenv("WADB_ADB"))
+	opts.Iface = strings.TrimSpace(os.Getenv("WADB_IFACE"))
 
 	var err error
 	if opts.PairOnly, err = envBool("WADB_PAIR_ONLY", opts.PairOnly); err != nil {
@@ -224,17 +278,6 @@ func envDuration(name string, fallback time.Duration) (time.Duration, error) {
 	return value, nil
 }
 
-// verboseLogf returns the mDNS logger used when --verbose is set, or nil to
-// disable discovery logging.
-func verboseLogf(verbose bool) mdns.Logf {
-	if !verbose {
-		return nil
-	}
-	return func(format string, args ...any) {
-		fmt.Fprintf(os.Stderr, format+"\n", args...)
-	}
-}
-
 // setupADB resolves the adb binary, reports its platform-tools version, and
 // makes sure the daemon is running before any mDNS discovery starts.
 func setupADB(ctx context.Context, opts runOptions) (string, error) {
@@ -270,11 +313,11 @@ func setupADB(ctx context.Context, opts runOptions) (string, error) {
 // discoverConnectEndpoints waits for _adb-tls-connect._tcp announces and
 // returns them ordered so preferredHost, when known, is tried first. Callers
 // wrap the error with a hint that fits their flow.
-func discoverConnectEndpoints(ctx context.Context, timeout time.Duration, preferredHost string, logf mdns.Logf) ([]mdns.Endpoint, error) {
+func discoverConnectEndpoints(ctx context.Context, timeout time.Duration, preferredHost string, opts mdns.Options) ([]mdns.Endpoint, error) {
 	connCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	endpoints, err := browseConnect(connCtx, connectSettleDelay, logf)
+	endpoints, err := browseConnect(connCtx, connectSettleDelay, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -309,15 +352,20 @@ func connect(opts runOptions) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	mdnsOpts, err := opts.mdnsOptions()
+	if err != nil {
+		return err
+	}
+
 	adbPath, err := setupADB(ctx, opts)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("Looking for devices announcing _adb-tls-connect._tcp...")
-	endpoints, err := discoverConnectEndpoints(ctx, opts.ConnectTimeout, "", verboseLogf(opts.Verbose))
+	endpoints, err := discoverConnectEndpoints(ctx, opts.ConnectTimeout, "", mdnsOpts)
 	if err != nil {
-		return fmt.Errorf("no _adb-tls-connect._tcp announce appeared within %s: %w\nenable Wireless debugging on a device already paired with this host, or run wadb without arguments to pair a new one", opts.ConnectTimeout, err)
+		return fmt.Errorf("no _adb-tls-connect._tcp announce appeared within %s: %w\nenable Wireless debugging on a device already paired with this host, or run wadb without arguments to pair a new one\nif a VPN or container bridge is active, limit discovery with --iface (wadb doctor lists the candidates)", opts.ConnectTimeout, err)
 	}
 
 	return connectToEndpoints(ctx, adbPath, endpoints)
@@ -327,7 +375,10 @@ func run(opts runOptions) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	logf := verboseLogf(opts.Verbose)
+	mdnsOpts, err := opts.mdnsOptions()
+	if err != nil {
+		return err
+	}
 
 	adbPath, err := setupADB(ctx, opts)
 	if err != nil {
@@ -355,9 +406,9 @@ func run(opts runOptions) error {
 
 	pairCtx, cancelPair := context.WithTimeout(ctx, opts.PairingTimeout)
 	defer cancelPair()
-	pairEP, err := browsePairing(pairCtx, serviceName, logf)
+	pairEP, err := browsePairing(pairCtx, serviceName, mdnsOpts)
 	if err != nil {
-		return fmt.Errorf("did not see _adb-tls-pairing._tcp announce within %s: %w\ncheck that both devices are on the same Wi-Fi, Wireless debugging is enabled, and mDNS/UDP 5353 is not blocked by the network or firewall", opts.PairingTimeout, err)
+		return fmt.Errorf("did not see _adb-tls-pairing._tcp announce within %s: %w\ncheck that both devices are on the same Wi-Fi, Wireless debugging is enabled, and mDNS/UDP 5353 is not blocked by the network or firewall\nif a VPN or container bridge is active, limit discovery with --iface (wadb doctor lists the candidates)", opts.PairingTimeout, err)
 	}
 	fmt.Printf("Found pairing endpoint %s:%d, pairing...\n", pairEP.Host, pairEP.Port)
 
@@ -371,7 +422,7 @@ func run(opts runOptions) error {
 	}
 
 	fmt.Println("Waiting for device to announce on _adb-tls-connect._tcp...")
-	connEPs, err := discoverConnectEndpoints(ctx, opts.ConnectTimeout, pairEP.Host, logf)
+	connEPs, err := discoverConnectEndpoints(ctx, opts.ConnectTimeout, pairEP.Host, mdnsOpts)
 	if err != nil {
 		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nsome Android builds delay this announce; retry with wadb connect, or run adb connect manually using the host and port shown in Wireless debugging", opts.ConnectTimeout, err)
 	}

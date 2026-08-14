@@ -1,6 +1,47 @@
 package mdns
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestCheckInterfaceRejectsUnknownName(t *testing.T) {
+	err := CheckInterface("wadb-does-not-exist0")
+	if err == nil {
+		t.Fatal("CheckInterface accepted an unknown interface")
+	}
+	if !strings.Contains(err.Error(), "wadb-does-not-exist0") {
+		t.Fatalf("error %q does not name the interface", err)
+	}
+}
+
+func TestCheckInterfaceAcceptsMulticastInterface(t *testing.T) {
+	ifaces, err := MulticastInterfaces()
+	if err != nil {
+		t.Fatalf("MulticastInterfaces: %v", err)
+	}
+	if len(ifaces) == 0 {
+		t.Skip("no multicast-capable interface on this host")
+	}
+
+	for _, iface := range ifaces {
+		if iface.Name == "" {
+			t.Fatalf("interface has no name: %+v", iface)
+		}
+		if len(iface.IPs) == 0 {
+			t.Fatalf("interface %q has no addresses", iface.Name)
+		}
+		if err := CheckInterface(iface.Name); err != nil {
+			t.Fatalf("CheckInterface(%q): %v", iface.Name, err)
+		}
+	}
+}
+
+func TestResolverRejectsUnknownInterfaceBeforeBrowsing(t *testing.T) {
+	if _, err := (Options{Iface: "wadb-does-not-exist0"}).resolver(); err == nil {
+		t.Fatal("resolver accepted an unknown interface")
+	}
+}
 
 func TestPreferHostMovesPreferredEndpointsFirst(t *testing.T) {
 	endpoints := []Endpoint{

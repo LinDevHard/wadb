@@ -7,6 +7,8 @@ All notable changes to this project are documented here.
 ### Added
 
 - Added `wadb connect` to reconnect a device that is already paired with this host, without generating a QR code.
+- Added `--iface` (env: `WADB_IFACE`) to browse mDNS on a single network interface when a VPN, container bridge, or second NIC swallows the multicast traffic.
+- `wadb doctor` now lists the network interfaces worth passing to `--iface`, and validates one when given.
 
 ## [1.0.0] - 2026-06-02
 
