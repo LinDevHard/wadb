@@ -6,14 +6,14 @@ import (
 )
 
 const (
-	serviceNamePrefix = "studio-"
+	serviceNamePrefix  = "studio-"
 	serviceNameRandLen = 10
 	passwordLen        = 12
 )
 
 const (
-	alnum      = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	passChars  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	alnum     = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	passChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
 // GenerateServiceName returns a string of the form "studio-XXXXXXXXXX".
