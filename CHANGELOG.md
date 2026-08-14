@@ -20,7 +20,9 @@ All notable changes to this project are documented here.
 ### Changed
 
 - Fall back to the endpoints reported by `adb mdns services` when the built-in mDNS browse finds no `_adb-tls-connect._tcp` announce.
-- Updated the transitive `github.com/miekg/dns` dependency from 1.1.27 to 1.1.72.
+- Updated the transitive `github.com/miekg/dns` dependency from 1.1.27 to 1.1.72, and `golang.org/x/net` to 0.56.0.
+- Release archives now carry the man page and the shell completions; the Homebrew formula installs them.
+- CI gained gofmt, golangci-lint, and govulncheck jobs, and Dependabot keeps Go modules and actions current.
 
 ## [1.0.0] - 2026-06-02
 

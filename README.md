@@ -131,6 +131,17 @@ If none match, set `ANDROID_HOME` or install platform-tools.
 | Linux | Supported, expected to work as-is. |
 | Windows | Experimental. `adb` discovery is partially implemented and unverified; use `--adb` or `WADB_ADB` to point at a known platform-tools install. |
 
+## Shell completions and man page
+
+The release archives carry a man page and completions for bash, zsh, and fish. Homebrew installs all of them; from a downloaded archive, copy them where your shell looks:
+
+```sh
+sudo install -m 0644 man/wadb.1 /usr/local/share/man/man1/wadb.1
+sudo install -m 0644 completions/wadb.bash /usr/local/etc/bash_completion.d/wadb
+sudo install -m 0644 completions/wadb.zsh /usr/local/share/zsh/site-functions/_wadb
+sudo install -m 0644 completions/wadb.fish /usr/local/share/fish/vendor_completions.d/wadb.fish
+```
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
