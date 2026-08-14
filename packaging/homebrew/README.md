@@ -2,7 +2,7 @@
 
 This directory contains the formula support for the `LinDevHard/homebrew-tap` repository.
 
-`wadb.rb` is a checked-in example for the current stable tag. `wadb.rb.template` is used by the release workflow to generate the tap formula for the tag being released.
+`wadb.rb.template` is the source of truth: the release workflow renders it into the tap for the tag being released. `wadb.rb` is a checked-in snapshot of an earlier render, kept as a readable example — its version and checksums belong to the release it was generated for, and nothing regenerates it automatically.
 
 To publish it manually:
 

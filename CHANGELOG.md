@@ -4,18 +4,20 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-15
+
 ### Added
 
 - Added `wadb connect` to reconnect a device that is already paired with this host, without generating a QR code.
 - Added `--iface` (env: `WADB_IFACE`) to browse mDNS on a single network interface when a VPN, container bridge, or second NIC swallows the multicast traffic.
 - `wadb doctor` now lists the network interfaces worth passing to `--iface`, and validates one when given.
-
 - Added `--qr-invert` (env: `WADB_QR_INVERT`) for terminals with a light background.
 - Added `--qr-sixel` (env: `WADB_QR_SIXEL`) to draw the QR code as an image on terminals that support sixel.
 
 ### Fixed
 
 - `--qr-ascii` drew one character per module, rendering the QR code twice as tall as it was wide; each module is now doubled so the code stays square.
+- The Homebrew formula's test block compared `wadb --version` against a `v`-prefixed string the binary never prints.
 
 ### Changed
 
@@ -82,7 +84,8 @@ All notable changes to this project are documented here.
 - mDNS discovery for `_adb-tls-pairing._tcp` and `_adb-tls-connect._tcp`.
 - `adb pair` and `adb connect` orchestration.
 
-[Unreleased]: https://github.com/LinDevHard/wadb/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/LinDevHard/wadb/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/LinDevHard/wadb/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/LinDevHard/wadb/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/LinDevHard/wadb/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/LinDevHard/wadb/compare/v0.1.0...v0.1.1

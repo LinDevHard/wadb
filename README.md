@@ -9,7 +9,7 @@
 
 Connect an Android 11+ device over ADB Wi-Fi by scanning a QR code from your terminal.
 
-Same protocol as Android Studio's *Pair device using Wi-Fi*, but without launching the IDE — just run `wadb`, scan, done.
+Same protocol as Android Studio's *Pair device using Wi-Fi*, but without launching the IDE — just run `wadb`, scan, done. After that first pairing, `wadb connect` brings the device back without a QR code.
 
 ![demo](docs/demo.gif)
 

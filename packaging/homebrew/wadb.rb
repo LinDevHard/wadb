@@ -47,7 +47,7 @@ class Wadb < Formula
   end
 
   test do
-    assert_match "v#{version}", shell_output("#{bin}/wadb --version")
+    assert_match version.to_s, shell_output("#{bin}/wadb --version")
     assert_match "pair Android devices", shell_output("#{bin}/wadb --help 2>&1")
   end
 end
