@@ -36,6 +36,10 @@ class Wadb < Formula
   def install
     bin.install "wadb"
     doc.install "README.md"
+    man1.install "man/wadb.1"
+    bash_completion.install "completions/wadb.bash" => "wadb"
+    zsh_completion.install "completions/wadb.zsh" => "_wadb"
+    fish_completion.install "completions/wadb.fish" => "wadb.fish"
   end
 
   def caveats

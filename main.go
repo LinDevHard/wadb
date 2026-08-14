@@ -44,17 +44,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	showVersion := flag.Bool("version", false, "print version and exit")
-	flag.BoolVar(showVersion, "v", false, "shorthand for --version")
-	adbPath := flag.String("adb", envOpts.ADBPath, "path to adb binary (env: WADB_ADB; default: auto-detect)")
-	iface := flag.String("iface", envOpts.Iface, "network interface to browse for mDNS (env: WADB_IFACE; default: all)")
-	pairOnly := flag.Bool("pair-only", envOpts.PairOnly, "pair the device, then exit without running adb connect (env: WADB_PAIR_ONLY)")
-	qrASCII := flag.Bool("qr-ascii", envOpts.QRASCII, "render the QR code with plain ASCII blocks (env: WADB_QR_ASCII)")
-	qrInvert := flag.Bool("qr-invert", envOpts.QRInvert, "invert the QR code for terminals with a light background (env: WADB_QR_INVERT)")
-	qrSixel := flag.Bool("qr-sixel", envOpts.QRSixel, "render the QR code as a sixel image (env: WADB_QR_SIXEL)")
-	verbose := flag.Bool("verbose", envOpts.Verbose, "print discovered mDNS service entries to stderr (env: WADB_VERBOSE)")
-	pairingTimeout := flag.Duration("pair-timeout", envOpts.PairingTimeout, "time to wait for the pairing mDNS announce (env: WADB_PAIR_TIMEOUT)")
-	connectTimeout := flag.Duration("connect-timeout", envOpts.ConnectTimeout, "time to wait for the connect mDNS announce (env: WADB_CONNECT_TIMEOUT)")
+	showVersion, options := registerFlags(flag.CommandLine, envOpts)
 	flag.Usage = usage
 	flag.Parse()
 
@@ -63,17 +53,7 @@ func main() {
 		return
 	}
 
-	opts := runOptions{
-		ADBPath:        *adbPath,
-		Iface:          *iface,
-		PairingTimeout: *pairingTimeout,
-		ConnectTimeout: *connectTimeout,
-		PairOnly:       *pairOnly,
-		QRASCII:        *qrASCII,
-		QRInvert:       *qrInvert,
-		QRSixel:        *qrSixel,
-		Verbose:        *verbose,
-	}
+	opts := options()
 
 	switch {
 	case flag.NArg() == 0:
@@ -90,6 +70,38 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
+	}
+}
+
+// registerFlags defines every flag on fs, taking defaults from env, and
+// returns the --version flag together with a function that collects the
+// parsed values. Keeping the definitions in one place lets the tests parse
+// the real flag set instead of a copy of it.
+func registerFlags(fs *flag.FlagSet, env runOptions) (showVersion *bool, options func() runOptions) {
+	showVersion = fs.Bool("version", false, "print version and exit")
+	fs.BoolVar(showVersion, "v", false, "shorthand for --version")
+	adbPath := fs.String("adb", env.ADBPath, "path to adb binary (env: WADB_ADB; default: auto-detect)")
+	iface := fs.String("iface", env.Iface, "network interface to browse for mDNS (env: WADB_IFACE; default: all)")
+	pairOnly := fs.Bool("pair-only", env.PairOnly, "pair the device, then exit without running adb connect (env: WADB_PAIR_ONLY)")
+	qrASCII := fs.Bool("qr-ascii", env.QRASCII, "render the QR code with plain ASCII blocks (env: WADB_QR_ASCII)")
+	qrInvert := fs.Bool("qr-invert", env.QRInvert, "invert the QR code for terminals with a light background (env: WADB_QR_INVERT)")
+	qrSixel := fs.Bool("qr-sixel", env.QRSixel, "render the QR code as a sixel image (env: WADB_QR_SIXEL)")
+	verbose := fs.Bool("verbose", env.Verbose, "print discovered mDNS service entries to stderr (env: WADB_VERBOSE)")
+	pairingTimeout := fs.Duration("pair-timeout", env.PairingTimeout, "time to wait for the pairing mDNS announce (env: WADB_PAIR_TIMEOUT)")
+	connectTimeout := fs.Duration("connect-timeout", env.ConnectTimeout, "time to wait for the connect mDNS announce (env: WADB_CONNECT_TIMEOUT)")
+
+	return showVersion, func() runOptions {
+		return runOptions{
+			ADBPath:        *adbPath,
+			Iface:          *iface,
+			PairingTimeout: *pairingTimeout,
+			ConnectTimeout: *connectTimeout,
+			PairOnly:       *pairOnly,
+			QRASCII:        *qrASCII,
+			QRInvert:       *qrInvert,
+			QRSixel:        *qrSixel,
+			Verbose:        *verbose,
+		}
 	}
 }
 

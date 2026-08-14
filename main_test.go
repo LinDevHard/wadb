@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -190,14 +191,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	}
 
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	adbPath := fs.String("adb", envOpts.ADBPath, "")
-	iface := fs.String("iface", envOpts.Iface, "")
-	pairOnly := fs.Bool("pair-only", envOpts.PairOnly, "")
-	qrASCII := fs.Bool("qr-ascii", envOpts.QRASCII, "")
-	qrInvert := fs.Bool("qr-invert", envOpts.QRInvert, "")
-	verbose := fs.Bool("verbose", envOpts.Verbose, "")
-	pairingTimeout := fs.Duration("pair-timeout", envOpts.PairingTimeout, "")
-	connectTimeout := fs.Duration("connect-timeout", envOpts.ConnectTimeout, "")
+	_, options := registerFlags(fs, envOpts)
 
 	if err := fs.Parse([]string{
 		"--adb", "/tmp/flag-adb",
@@ -212,16 +206,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 
-	got := runOptions{
-		ADBPath:        *adbPath,
-		Iface:          *iface,
-		PairingTimeout: *pairingTimeout,
-		ConnectTimeout: *connectTimeout,
-		PairOnly:       *pairOnly,
-		QRASCII:        *qrASCII,
-		QRInvert:       *qrInvert,
-		Verbose:        *verbose,
-	}
+	got := options()
 	if got.ADBPath != "/tmp/flag-adb" {
 		t.Fatalf("ADBPath = %q, want /tmp/flag-adb", got.ADBPath)
 	}
@@ -236,6 +221,64 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	}
 	if got.ConnectTimeout != 20*time.Second {
 		t.Fatalf("ConnectTimeout = %s, want 20s", got.ConnectTimeout)
+	}
+}
+
+var (
+	optionToken     = regexp.MustCompile(`--?[a-zA-Z][a-zA-Z0-9-]*`)
+	fishLongOption  = regexp.MustCompile(`-l\s+(\S+)`)
+	fishShortOption = regexp.MustCompile(`-s\s+(\S+)`)
+)
+
+// TestPackagedFilesDocumentEveryFlag keeps the shell completions and the man
+// page from drifting: every flag the binary accepts has to appear in each of
+// them, so adding one without packaging it fails here rather than shipping.
+func TestPackagedFilesDocumentEveryFlag(t *testing.T) {
+	fs := flag.NewFlagSet("wadb", flag.ContinueOnError)
+	registerFlags(fs, runOptions{})
+
+	var flags []string
+	fs.VisitAll(func(f *flag.Flag) {
+		dashes := "--"
+		if len(f.Name) == 1 {
+			dashes = "-"
+		}
+		flags = append(flags, dashes+f.Name)
+	})
+
+	for _, path := range []string{
+		"completions/wadb.bash",
+		"completions/wadb.zsh",
+		"completions/wadb.fish",
+		"man/wadb.1",
+	} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		// Man pages escape the hyphens they print, and fish spells options as
+		// "-l name" and "-s v" rather than writing the dashes out.
+		content := strings.ReplaceAll(string(raw), `\-`, "-")
+		if strings.HasSuffix(path, ".fish") {
+			content = fishLongOption.ReplaceAllString(content, "--$1")
+			content = fishShortOption.ReplaceAllString(content, "-$1")
+		}
+
+		// Match whole options, so that -v is not satisfied by --verbose.
+		mentioned := make(map[string]bool)
+		for _, option := range optionToken.FindAllString(content, -1) {
+			mentioned[option] = true
+		}
+		for _, name := range flags {
+			if !mentioned[name] {
+				t.Errorf("%s does not mention %s", path, name)
+			}
+		}
+		for _, command := range []string{"connect", "doctor"} {
+			if !strings.Contains(content, command) {
+				t.Errorf("%s does not mention the %s command", path, command)
+			}
+		}
 	}
 }
 
@@ -795,7 +838,7 @@ func withDiscardedOutput(t *testing.T, fn func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer devNull.Close()
+	defer func() { _ = devNull.Close() }()
 
 	os.Stdout = devNull
 	os.Stderr = devNull

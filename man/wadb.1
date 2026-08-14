@@ -1,0 +1,184 @@
+.TH WADB 1 "2026-08-15" "wadb" "User Commands"
+.SH NAME
+wadb \- pair Android devices over ADB Wi\-Fi via a terminal QR code
+.SH SYNOPSIS
+.B wadb
+.RI [ flags ]
+.br
+.B wadb
+.RI [ flags ]
+.B connect
+.br
+.B wadb
+.RI [ flags ]
+.B doctor
+.SH DESCRIPTION
+.B wadb
+prints a QR code in the terminal. Scanning it from
+.B Settings \(-> Developer options \(-> Wireless debugging \(-> Pair device with QR code
+on an Android 11+ device pairs the device with this host and connects it over
+ADB Wi\-Fi, then
+.B wadb
+exits.
+.PP
+This is the same protocol Android Studio uses for
+.IR "Pair device using Wi-Fi" .
+The phone and the host must share a Wi\-Fi network with no AP isolation, and
+Wireless debugging must be enabled in Developer options.
+.PP
+.B wadb
+generates a single\-use service name and password, renders them as a QR code,
+waits for the device to announce
+.B _adb\-tls\-pairing._tcp
+over mDNS, and runs
+.BR "adb pair" .
+It then waits for the
+.B _adb\-tls\-connect._tcp
+announce and runs
+.BR "adb connect" .
+The TLS pairing handshake itself is handled by
+.BR adb (1).
+.SH COMMANDS
+.TP
+.B connect
+Reconnect a device that is already paired with this host, without printing a QR
+code. Pairing survives reboots and Wi\-Fi changes, but the port Android listens
+on does not, so this is the command to reach for when a known device stops
+appearing in
+.BR "adb devices" .
+.TP
+.B doctor
+Report the local
+.BR adb ,
+its platform\-tools version, the network interfaces worth passing to
+.BR \-\-iface ,
+and the mDNS services
+.B adb
+can see.
+.SH OPTIONS
+.TP
+.BI \-\-adb " path"
+Path to the adb binary. By default
+.B wadb
+looks in $ANDROID_HOME, $ANDROID_SDK_ROOT, the standard Android Studio SDK
+locations, $PATH, and the Homebrew commandline\-tools directory.
+.TP
+.BI \-\-iface " name"
+Browse for mDNS on a single network interface instead of all of them. Use this
+when a VPN tunnel, a container bridge, or a second NIC swallows the multicast
+traffic. An unusable name is rejected immediately.
+.TP
+.B \-\-pair\-only
+Pair the device, then exit without running
+.BR "adb connect" .
+Useful when pairing succeeds but the device delays or hides its connect
+announce.
+.TP
+.B \-\-qr\-ascii
+Render the QR code with plain ASCII blocks, for fonts and emulators that render
+half blocks poorly.
+.TP
+.B \-\-qr\-invert
+Invert the QR code, for terminals with a light background.
+.TP
+.B \-\-qr\-sixel
+Render the QR code as a sixel image. Requires a terminal that implements the
+sixel protocol, and scans under any color theme.
+.TP
+.B \-\-verbose
+Print discovered mDNS service entries to standard error.
+.TP
+.BI \-\-pair\-timeout " duration"
+How long to wait for the pairing announce. Default 2m.
+.TP
+.BI \-\-connect\-timeout " duration"
+How long to wait for the connect announce. Default 30s.
+.TP
+.B \-\-version
+Print the version and exit.
+.B \-v
+is a shorthand.
+.TP
+.B \-\-help
+Print usage and exit.
+.SH ENVIRONMENT
+Every option above has an environment equivalent; command\-line flags override
+it.
+.TP
+.B WADB_ADB
+Same as
+.BR \-\-adb .
+.TP
+.B WADB_IFACE
+Same as
+.BR \-\-iface .
+.TP
+.B WADB_PAIR_ONLY
+Same as
+.BR \-\-pair\-only .
+.TP
+.B WADB_QR_ASCII
+Same as
+.BR \-\-qr\-ascii .
+.TP
+.B WADB_QR_INVERT
+Same as
+.BR \-\-qr\-invert .
+.TP
+.B WADB_QR_SIXEL
+Same as
+.BR \-\-qr\-sixel .
+.TP
+.B WADB_VERBOSE
+Same as
+.BR \-\-verbose .
+.TP
+.B WADB_PAIR_TIMEOUT
+Same as
+.BR \-\-pair\-timeout .
+.TP
+.B WADB_CONNECT_TIMEOUT
+Same as
+.BR \-\-connect\-timeout .
+.PP
+Boolean variables accept values such as true, false, 1, or 0. Duration
+variables accept values such as 30s or 3m.
+.SH EXIT STATUS
+.TP
+.B 0
+Paired and connected, or the requested command completed.
+.TP
+.B 1
+Pairing, discovery, or connecting failed.
+.TP
+.B 2
+Invalid arguments or environment values.
+.SH EXAMPLES
+Pair and connect a new device:
+.PP
+.RS
+.EX
+wadb
+.EE
+.RE
+.PP
+Reconnect a device paired earlier, over a specific interface:
+.PP
+.RS
+.EX
+wadb \-\-iface en0 connect
+.EE
+.RE
+.PP
+Diagnose a discovery problem:
+.PP
+.RS
+.EX
+wadb doctor
+wadb \-\-verbose
+.EE
+.RE
+.SH SEE ALSO
+.BR adb (1)
+.PP
+Project home: https://github.com/LinDevHard/wadb

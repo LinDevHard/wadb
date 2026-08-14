@@ -37,6 +37,8 @@ archives:
     files:
       - README.md
       - LICENSE
+      - man/wadb.1
+      - completions/*
 
 checksum:
   name_template: checksums.txt
