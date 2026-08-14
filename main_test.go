@@ -452,7 +452,7 @@ func TestRunBrowsesOnlyTheRequestedInterface(t *testing.T) {
 	restore := replaceHooks(t)
 	defer restore()
 
-	wantIface := "en0"
+	wantIface := localInterface(t)
 	var pairingIface, connectIface string
 
 	browsePairing = func(_ context.Context, _ string, opts mdns.Options) (mdns.Endpoint, error) {
@@ -491,7 +491,7 @@ func TestConnectBrowsesOnlyTheRequestedInterface(t *testing.T) {
 	restore := replaceHooks(t)
 	defer restore()
 
-	wantIface := "en0"
+	wantIface := localInterface(t)
 	var gotIface string
 
 	browseConnect = func(_ context.Context, _ time.Duration, opts mdns.Options) ([]mdns.Endpoint, error) {
@@ -784,6 +784,20 @@ func TestConnectHintsAtPairingWhenNoDeviceAnnounces(t *testing.T) {
 			t.Fatalf("error %q does not contain %q", got, want)
 		}
 	}
+}
+
+// localInterface returns an interface name this host will accept for --iface.
+// Hardcoding one does not travel: a laptop has en0, a CI runner has eth0.
+func localInterface(t *testing.T) string {
+	t.Helper()
+	ifaces, err := mdns.MulticastInterfaces()
+	if err != nil {
+		t.Fatalf("MulticastInterfaces: %v", err)
+	}
+	if len(ifaces) == 0 {
+		t.Skip("no multicast-capable interface on this host")
+	}
+	return ifaces[0].Name
 }
 
 func replaceHooks(t *testing.T) func() {

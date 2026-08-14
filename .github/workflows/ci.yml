@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          check-latest: true
           cache: true
 
       - name: go vet
@@ -35,6 +36,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          check-latest: true
           cache: true
 
       - name: gofmt
@@ -55,9 +57,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Scanned with the current Go rather than the minimum from go.mod: an
+      # old toolchain reports its own patched-since standard library, which
+      # says nothing about this code.
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
           cache: true
 
       - name: govulncheck
@@ -77,6 +82,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          check-latest: true
           cache: true
 
       - name: Run GoReleaser
