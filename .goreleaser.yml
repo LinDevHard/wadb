@@ -27,7 +27,7 @@ archives:
   - id: wadb
     ids:
       - wadb
-    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}-{{ .Version }}"
     formats:
       - tar.gz
     format_overrides:

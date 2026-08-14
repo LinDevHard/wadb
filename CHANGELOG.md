@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Release archives are now named `wadb-<os>-<arch>-<version>` instead of `wadb-<version>-<os>-<arch>`. Scripts that download a specific asset need the new pattern.
+- The Homebrew formula no longer declares `version`: with the version last in the archive name, Homebrew derives it from the URL on every version of Homebrew, and `brew audit` rejects the redundant declaration.
+
 ## [1.1.0] - 2026-08-15
 
 ### Added

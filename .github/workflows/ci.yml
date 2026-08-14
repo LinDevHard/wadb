@@ -114,10 +114,10 @@ jobs:
             awk -v file="$1" '$2 == file { print $1 }' "${CHECKSUMS_FILE}"
           }
 
-          DARWIN_AMD64_SHA256="$(checksum "wadb-${VERSION}-darwin-amd64.tar.gz")"
-          DARWIN_ARM64_SHA256="$(checksum "wadb-${VERSION}-darwin-arm64.tar.gz")"
-          LINUX_AMD64_SHA256="$(checksum "wadb-${VERSION}-linux-amd64.tar.gz")"
-          LINUX_ARM64_SHA256="$(checksum "wadb-${VERSION}-linux-arm64.tar.gz")"
+          DARWIN_AMD64_SHA256="$(checksum "wadb-darwin-amd64-${VERSION}.tar.gz")"
+          DARWIN_ARM64_SHA256="$(checksum "wadb-darwin-arm64-${VERSION}.tar.gz")"
+          LINUX_AMD64_SHA256="$(checksum "wadb-linux-amd64-${VERSION}.tar.gz")"
+          LINUX_ARM64_SHA256="$(checksum "wadb-linux-arm64-${VERSION}.tar.gz")"
 
           for value in \
             "${DARWIN_AMD64_SHA256}" \
