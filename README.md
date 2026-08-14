@@ -66,6 +66,8 @@ wadb --pair-timeout 3m --connect-timeout 45s
 wadb --adb /path/to/adb
 wadb --pair-only
 wadb --qr-ascii
+wadb --qr-invert
+wadb --qr-sixel
 WADB_ADB=/path/to/adb WADB_PAIR_ONLY=true wadb
 ```
 
@@ -73,9 +75,17 @@ WADB_ADB=/path/to/adb WADB_PAIR_ONLY=true wadb
 
 Use `--iface` when discovery times out on a host with more than one network path — a VPN tunnel, a container bridge, or a second NIC can swallow the multicast traffic before it reaches your Wi-Fi interface. `wadb doctor` lists the candidate names, and an unusable one fails immediately instead of timing out.
 
-Use `--adb` to force a specific Android platform-tools install. Use `--pair-only` when pairing works but your device delays or hides the `_adb-tls-connect._tcp` announce; after it exits, connect manually with the host and port shown in Android's Wireless debugging screen. Use `--qr-ascii` if your terminal font or emulator renders the default compact QR poorly.
+Use `--adb` to force a specific Android platform-tools install. Use `--pair-only` when pairing works but your device delays or hides the `_adb-tls-connect._tcp` announce; after it exits, connect manually with the host and port shown in Android's Wireless debugging screen.
 
-The same options can be set with environment variables: `WADB_ADB`, `WADB_IFACE`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_VERBOSE`, `WADB_PAIR_TIMEOUT`, and `WADB_CONNECT_TIMEOUT`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
+If the phone will not scan the code, the rendering is usually to blame:
+
+| Flag | When |
+| --- | --- |
+| `--qr-invert` | Light terminal background. The default lights up the code's light modules, which a light theme turns inside out. |
+| `--qr-ascii` | Font or emulator renders half blocks poorly, leaving the code smeared or gapped. |
+| `--qr-sixel` | Terminal speaks sixel (iTerm2, WezTerm, foot, mlterm). Draws the code as an image with its own black-on-white palette, so it scans under any theme. |
+
+The same options can be set with environment variables: `WADB_ADB`, `WADB_IFACE`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_QR_INVERT`, `WADB_QR_SIXEL`, `WADB_VERBOSE`, `WADB_PAIR_TIMEOUT`, and `WADB_CONNECT_TIMEOUT`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
 
 ## How it works
 

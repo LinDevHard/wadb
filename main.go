@@ -50,6 +50,8 @@ func main() {
 	iface := flag.String("iface", envOpts.Iface, "network interface to browse for mDNS (env: WADB_IFACE; default: all)")
 	pairOnly := flag.Bool("pair-only", envOpts.PairOnly, "pair the device, then exit without running adb connect (env: WADB_PAIR_ONLY)")
 	qrASCII := flag.Bool("qr-ascii", envOpts.QRASCII, "render the QR code with plain ASCII blocks (env: WADB_QR_ASCII)")
+	qrInvert := flag.Bool("qr-invert", envOpts.QRInvert, "invert the QR code for terminals with a light background (env: WADB_QR_INVERT)")
+	qrSixel := flag.Bool("qr-sixel", envOpts.QRSixel, "render the QR code as a sixel image (env: WADB_QR_SIXEL)")
 	verbose := flag.Bool("verbose", envOpts.Verbose, "print discovered mDNS service entries to stderr (env: WADB_VERBOSE)")
 	pairingTimeout := flag.Duration("pair-timeout", envOpts.PairingTimeout, "time to wait for the pairing mDNS announce (env: WADB_PAIR_TIMEOUT)")
 	connectTimeout := flag.Duration("connect-timeout", envOpts.ConnectTimeout, "time to wait for the connect mDNS announce (env: WADB_CONNECT_TIMEOUT)")
@@ -68,6 +70,8 @@ func main() {
 		ConnectTimeout: *connectTimeout,
 		PairOnly:       *pairOnly,
 		QRASCII:        *qrASCII,
+		QRInvert:       *qrInvert,
+		QRSixel:        *qrSixel,
 		Verbose:        *verbose,
 	}
 
@@ -111,8 +115,8 @@ func usage() {
 	flag.PrintDefaults()
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Environment:")
-	fmt.Fprintln(w, "  WADB_ADB, WADB_IFACE, WADB_PAIR_ONLY, WADB_QR_ASCII, WADB_VERBOSE, WADB_PAIR_TIMEOUT,")
-	fmt.Fprintln(w, "  WADB_CONNECT_TIMEOUT")
+	fmt.Fprintln(w, "  WADB_ADB, WADB_IFACE, WADB_PAIR_ONLY, WADB_QR_ASCII, WADB_QR_INVERT, WADB_QR_SIXEL,")
+	fmt.Fprintln(w, "  WADB_VERBOSE, WADB_PAIR_TIMEOUT, WADB_CONNECT_TIMEOUT")
 	fmt.Fprintln(w, "  CLI flags override environment values.")
 }
 
@@ -204,6 +208,8 @@ type runOptions struct {
 	ConnectTimeout time.Duration
 	PairOnly       bool
 	QRASCII        bool
+	QRInvert       bool
+	QRSixel        bool
 	Verbose        bool
 }
 
@@ -239,6 +245,12 @@ func loadEnvOptions() (runOptions, error) {
 		return runOptions{}, err
 	}
 	if opts.QRASCII, err = envBool("WADB_QR_ASCII", opts.QRASCII); err != nil {
+		return runOptions{}, err
+	}
+	if opts.QRInvert, err = envBool("WADB_QR_INVERT", opts.QRInvert); err != nil {
+		return runOptions{}, err
+	}
+	if opts.QRSixel, err = envBool("WADB_QR_SIXEL", opts.QRSixel); err != nil {
 		return runOptions{}, err
 	}
 	if opts.Verbose, err = envBool("WADB_VERBOSE", opts.Verbose); err != nil {
@@ -431,7 +443,11 @@ func run(opts runOptions) error {
 	fmt.Println("  Settings → Developer options → Wireless debugging → Pair device with QR code")
 	fmt.Println("Then scan the QR below.")
 	fmt.Println()
-	pairing.RenderQR(os.Stdout, payload, pairing.QROptions{ASCII: opts.QRASCII})
+	pairing.RenderQR(os.Stdout, payload, pairing.QROptions{
+		ASCII:  opts.QRASCII,
+		Invert: opts.QRInvert,
+		Sixel:  opts.QRSixel,
+	})
 	fmt.Println()
 	fmt.Println("Waiting for pairing announce...")
 

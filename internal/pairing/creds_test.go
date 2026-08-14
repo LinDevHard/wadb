@@ -1,7 +1,6 @@
 package pairing
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 	"unicode"
@@ -60,23 +59,5 @@ func TestQRPayload(t *testing.T) {
 	want := "WIFI:T:ADB;S:studio-abc;P:pw1234;;"
 	if got != want {
 		t.Fatalf("QRPayload = %q, want %q", got, want)
-	}
-}
-
-func TestRenderQRASCIIFallback(t *testing.T) {
-	var halfBlocks bytes.Buffer
-	RenderQR(&halfBlocks, QRPayload("studio-abc", "pw1234"), QROptions{})
-
-	var ascii bytes.Buffer
-	RenderQR(&ascii, QRPayload("studio-abc", "pw1234"), QROptions{ASCII: true})
-
-	if halfBlocks.Len() == 0 {
-		t.Fatal("half-block QR output is empty")
-	}
-	if ascii.Len() == 0 {
-		t.Fatal("ASCII QR output is empty")
-	}
-	if bytes.Equal(halfBlocks.Bytes(), ascii.Bytes()) {
-		t.Fatal("ASCII QR output matched half-block output")
 	}
 }

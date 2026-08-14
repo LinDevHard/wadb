@@ -125,6 +125,8 @@ func TestLoadEnvOptions(t *testing.T) {
 	t.Setenv("WADB_IFACE", " en0 ")
 	t.Setenv("WADB_PAIR_ONLY", "true")
 	t.Setenv("WADB_QR_ASCII", "1")
+	t.Setenv("WADB_QR_INVERT", "true")
+	t.Setenv("WADB_QR_SIXEL", "0")
 	t.Setenv("WADB_VERBOSE", "false")
 	t.Setenv("WADB_PAIR_TIMEOUT", "3m")
 	t.Setenv("WADB_CONNECT_TIMEOUT", "45s")
@@ -144,6 +146,12 @@ func TestLoadEnvOptions(t *testing.T) {
 	}
 	if !got.QRASCII {
 		t.Fatal("QRASCII = false, want true")
+	}
+	if !got.QRInvert {
+		t.Fatal("QRInvert = false, want true")
+	}
+	if got.QRSixel {
+		t.Fatal("QRSixel = true, want false")
 	}
 	if got.Verbose {
 		t.Fatal("Verbose = true, want false")
@@ -177,6 +185,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 		ConnectTimeout: 45 * time.Second,
 		PairOnly:       true,
 		QRASCII:        true,
+		QRInvert:       true,
 		Verbose:        true,
 	}
 
@@ -185,6 +194,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	iface := fs.String("iface", envOpts.Iface, "")
 	pairOnly := fs.Bool("pair-only", envOpts.PairOnly, "")
 	qrASCII := fs.Bool("qr-ascii", envOpts.QRASCII, "")
+	qrInvert := fs.Bool("qr-invert", envOpts.QRInvert, "")
 	verbose := fs.Bool("verbose", envOpts.Verbose, "")
 	pairingTimeout := fs.Duration("pair-timeout", envOpts.PairingTimeout, "")
 	connectTimeout := fs.Duration("connect-timeout", envOpts.ConnectTimeout, "")
@@ -194,6 +204,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 		"--iface", "en1",
 		"--pair-only=false",
 		"--qr-ascii=false",
+		"--qr-invert=false",
 		"--verbose=false",
 		"--pair-timeout", "10s",
 		"--connect-timeout", "20s",
@@ -208,6 +219,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 		ConnectTimeout: *connectTimeout,
 		PairOnly:       *pairOnly,
 		QRASCII:        *qrASCII,
+		QRInvert:       *qrInvert,
 		Verbose:        *verbose,
 	}
 	if got.ADBPath != "/tmp/flag-adb" {
@@ -216,7 +228,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	if got.Iface != "en1" {
 		t.Fatalf("Iface = %q, want en1", got.Iface)
 	}
-	if got.PairOnly || got.QRASCII || got.Verbose {
+	if got.PairOnly || got.QRASCII || got.QRInvert || got.Verbose {
 		t.Fatalf("bool flags did not override env defaults: %+v", got)
 	}
 	if got.PairingTimeout != 10*time.Second {

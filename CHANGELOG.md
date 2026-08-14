@@ -10,6 +10,13 @@ All notable changes to this project are documented here.
 - Added `--iface` (env: `WADB_IFACE`) to browse mDNS on a single network interface when a VPN, container bridge, or second NIC swallows the multicast traffic.
 - `wadb doctor` now lists the network interfaces worth passing to `--iface`, and validates one when given.
 
+- Added `--qr-invert` (env: `WADB_QR_INVERT`) for terminals with a light background.
+- Added `--qr-sixel` (env: `WADB_QR_SIXEL`) to draw the QR code as an image on terminals that support sixel.
+
+### Fixed
+
+- `--qr-ascii` drew one character per module, rendering the QR code twice as tall as it was wide; each module is now doubled so the code stays square.
+
 ### Changed
 
 - Fall back to the endpoints reported by `adb mdns services` when the built-in mDNS browse finds no `_adb-tls-connect._tcp` announce.
