@@ -60,19 +60,6 @@ func main() {
 		return
 	}
 
-	if flag.NArg() > 0 {
-		if flag.Arg(0) == "doctor" && flag.NArg() == 1 {
-			if err := doctor(*adbPath, *verbose); err != nil {
-				fmt.Fprintln(os.Stderr, "error:", err)
-				os.Exit(1)
-			}
-			return
-		}
-		fmt.Fprintf(os.Stderr, "error: unexpected positional arguments: %v\n\n", flag.Args())
-		flag.Usage()
-		os.Exit(2)
-	}
-
 	opts := runOptions{
 		ADBPath:        *adbPath,
 		PairingTimeout: *pairingTimeout,
@@ -81,7 +68,20 @@ func main() {
 		QRASCII:        *qrASCII,
 		Verbose:        *verbose,
 	}
-	if err := run(opts); err != nil {
+
+	switch {
+	case flag.NArg() == 0:
+		err = run(opts)
+	case flag.NArg() == 1 && flag.Arg(0) == "connect":
+		err = connect(opts)
+	case flag.NArg() == 1 && flag.Arg(0) == "doctor":
+		err = doctor(opts.ADBPath, opts.Verbose)
+	default:
+		fmt.Fprintf(os.Stderr, "error: unexpected positional arguments: %v\n\n", flag.Args())
+		flag.Usage()
+		os.Exit(2)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
@@ -93,12 +93,17 @@ func usage() {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  wadb [flags]")
+	fmt.Fprintln(w, "  wadb [flags] connect")
 	fmt.Fprintln(w, "  wadb [flags] doctor")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "With no flags, wadb prints a QR code. Scan it from")
+	fmt.Fprintln(w, "With no arguments, wadb prints a QR code. Scan it from")
 	fmt.Fprintln(w, "Settings → Developer options → Wireless debugging → Pair device with QR code")
 	fmt.Fprintln(w, "on an Android 11+ device sharing the same Wi-Fi network. wadb will")
 	fmt.Fprintln(w, "pair and connect automatically, then exit.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Commands:")
+	fmt.Fprintln(w, "  connect  reconnect to a device already paired with this host, without a QR code")
+	fmt.Fprintln(w, "  doctor   report the local adb, its version, and mDNS services it can see")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Flags:")
 	flag.PrintDefaults()
@@ -219,22 +224,25 @@ func envDuration(name string, fallback time.Duration) (time.Duration, error) {
 	return value, nil
 }
 
-func run(opts runOptions) error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	var logf mdns.Logf
-	if opts.Verbose {
-		logf = func(format string, args ...any) {
-			fmt.Fprintf(os.Stderr, format+"\n", args...)
-		}
+// verboseLogf returns the mDNS logger used when --verbose is set, or nil to
+// disable discovery logging.
+func verboseLogf(verbose bool) mdns.Logf {
+	if !verbose {
+		return nil
 	}
+	return func(format string, args ...any) {
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
+	}
+}
 
+// setupADB resolves the adb binary, reports its platform-tools version, and
+// makes sure the daemon is running before any mDNS discovery starts.
+func setupADB(ctx context.Context, opts runOptions) (string, error) {
 	adbPath := opts.ADBPath
 	if adbPath == "" {
 		found, err := findADB()
 		if err != nil {
-			return err
+			return "", err
 		}
 		adbPath = found
 	}
@@ -254,6 +262,75 @@ func run(opts runOptions) error {
 	}
 
 	if err := adbStartServer(ctx, adbPath); err != nil {
+		return "", err
+	}
+	return adbPath, nil
+}
+
+// discoverConnectEndpoints waits for _adb-tls-connect._tcp announces and
+// returns them ordered so preferredHost, when known, is tried first. Callers
+// wrap the error with a hint that fits their flow.
+func discoverConnectEndpoints(ctx context.Context, timeout time.Duration, preferredHost string, logf mdns.Logf) ([]mdns.Endpoint, error) {
+	connCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	endpoints, err := browseConnect(connCtx, connectSettleDelay, logf)
+	if err != nil {
+		return nil, err
+	}
+	return mdns.PreferHost(endpoints, preferredHost), nil
+}
+
+// connectToEndpoints runs adb connect against each endpoint in order and stops
+// at the first success. Endpoints belonging to devices this host has not paired
+// with simply fail, so trying them all is how the paired one is found.
+func connectToEndpoints(ctx context.Context, adbPath string, endpoints []mdns.Endpoint) error {
+	var failures []string
+	for _, ep := range endpoints {
+		fmt.Printf("Connecting to %s:%d...\n", ep.Host, ep.Port)
+		out, err := adbConnect(ctx, adbPath, ep.Host, ep.Port)
+		if err == nil {
+			fmt.Println(out)
+			addr := fmt.Sprintf("%s:%d", ep.Host, ep.Port)
+			if name, err := adbDeviceName(ctx, adbPath, addr); err == nil && name != "" {
+				fmt.Println("Device:", name)
+			}
+			return nil
+		}
+		failures = append(failures, err.Error())
+	}
+	return fmt.Errorf("failed to connect to %d discovered endpoint(s): %s", len(endpoints), strings.Join(failures, "; "))
+}
+
+// connect reconnects to a device that is already paired with this host. Pairing
+// survives reboots and Wi-Fi changes, but the device's port does not, so the
+// only thing needed is to discover the current _adb-tls-connect._tcp endpoint.
+func connect(opts runOptions) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	adbPath, err := setupADB(ctx, opts)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Looking for devices announcing _adb-tls-connect._tcp...")
+	endpoints, err := discoverConnectEndpoints(ctx, opts.ConnectTimeout, "", verboseLogf(opts.Verbose))
+	if err != nil {
+		return fmt.Errorf("no _adb-tls-connect._tcp announce appeared within %s: %w\nenable Wireless debugging on a device already paired with this host, or run wadb without arguments to pair a new one", opts.ConnectTimeout, err)
+	}
+
+	return connectToEndpoints(ctx, adbPath, endpoints)
+}
+
+func run(opts runOptions) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	logf := verboseLogf(opts.Verbose)
+
+	adbPath, err := setupADB(ctx, opts)
+	if err != nil {
 		return err
 	}
 
@@ -294,28 +371,10 @@ func run(opts runOptions) error {
 	}
 
 	fmt.Println("Waiting for device to announce on _adb-tls-connect._tcp...")
-	connCtx, cancelConn := context.WithTimeout(ctx, opts.ConnectTimeout)
-	defer cancelConn()
-	connEPs, err := browseConnect(connCtx, connectSettleDelay, logf)
+	connEPs, err := discoverConnectEndpoints(ctx, opts.ConnectTimeout, pairEP.Host, logf)
 	if err != nil {
-		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nsome Android builds delay this announce; retry wadb, or run adb connect manually using the host and port shown in Wireless debugging", opts.ConnectTimeout, err)
-	}
-	connEPs = mdns.PreferHost(connEPs, pairEP.Host)
-
-	var failures []string
-	for _, connEP := range connEPs {
-		fmt.Printf("Connecting to %s:%d...\n", connEP.Host, connEP.Port)
-		out, err := adbConnect(ctx, adbPath, connEP.Host, connEP.Port)
-		if err == nil {
-			fmt.Println(out)
-			addr := fmt.Sprintf("%s:%d", connEP.Host, connEP.Port)
-			if name, err := adbDeviceName(ctx, adbPath, addr); err == nil && name != "" {
-				fmt.Println("Device:", name)
-			}
-			return nil
-		}
-		failures = append(failures, err.Error())
+		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nsome Android builds delay this announce; retry with wadb connect, or run adb connect manually using the host and port shown in Wireless debugging", opts.ConnectTimeout, err)
 	}
 
-	return fmt.Errorf("failed to connect to %d discovered endpoint(s): %s", len(connEPs), strings.Join(failures, "; "))
+	return connectToEndpoints(ctx, adbPath, connEPs)
 }

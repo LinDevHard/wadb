@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Added `wadb connect` to reconnect a device that is already paired with this host, without generating a QR code.
+
 ## [1.0.0] - 2026-06-02
 
 ### Added

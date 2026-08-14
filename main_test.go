@@ -382,6 +382,127 @@ func TestRunIgnoresDeviceNameFailureAfterSuccessfulConnect(t *testing.T) {
 	}
 }
 
+func TestConnectSkipsPairingAndConnectsDiscoveredDevice(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	wantADB := "/tmp/connect-adb"
+	var started bool
+	var nameSerial string
+
+	adbStartServer = func(_ context.Context, adbPath string) error {
+		if adbPath != wantADB {
+			t.Fatalf("StartServer adbPath = %q, want %q", adbPath, wantADB)
+		}
+		started = true
+		return nil
+	}
+	browsePairing = func(context.Context, string, mdns.Logf) (mdns.Endpoint, error) {
+		t.Fatal("connect browsed for a pairing announce")
+		return mdns.Endpoint{}, nil
+	}
+	adbPair = func(context.Context, string, string, int, string) error {
+		t.Fatal("connect ran adb pair")
+		return nil
+	}
+	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+		return []mdns.Endpoint{{Host: "192.168.1.30", Port: 40002}}, nil
+	}
+	adbConnect = func(_ context.Context, adbPath string, host string, port int) (string, error) {
+		if adbPath != wantADB {
+			t.Fatalf("Connect adbPath = %q, want %q", adbPath, wantADB)
+		}
+		return fmt.Sprintf("connected to %s:%d", host, port), nil
+	}
+	adbDeviceName = func(_ context.Context, _ string, serial string) (string, error) {
+		nameSerial = serial
+		return "Google Pixel 8", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		if err := connect(runOptions{ADBPath: wantADB, ConnectTimeout: time.Second}); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+
+	if !started {
+		t.Fatal("StartServer was not called")
+	}
+	if nameSerial != "192.168.1.30:40002" {
+		t.Fatalf("DeviceName serial = %q, want 192.168.1.30:40002", nameSerial)
+	}
+}
+
+func TestConnectTriesEveryDiscoveredEndpoint(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	var tried []string
+
+	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+		return []mdns.Endpoint{
+			{Host: "192.168.1.40", Port: 40001},
+			{Host: "192.168.1.41", Port: 40002},
+		}, nil
+	}
+	adbConnect = func(_ context.Context, _ string, host string, port int) (string, error) {
+		addr := fmt.Sprintf("%s:%d", host, port)
+		tried = append(tried, addr)
+		if addr == "192.168.1.40:40001" {
+			return "", errors.New("device is not paired with this host")
+		}
+		return "connected", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		if err := connect(runOptions{ADBPath: "/tmp/connect-adb", ConnectTimeout: time.Second}); err != nil {
+			t.Fatalf("connect: %v", err)
+		}
+	})
+
+	want := []string{"192.168.1.40:40001", "192.168.1.41:40002"}
+	if len(tried) != len(want) {
+		t.Fatalf("tried endpoints = %v, want %v", tried, want)
+	}
+	for i := range want {
+		if tried[i] != want[i] {
+			t.Fatalf("tried[%d] = %q, want %q; all tried %v", i, tried[i], want[i], tried)
+		}
+	}
+}
+
+func TestConnectHintsAtPairingWhenNoDeviceAnnounces(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	browseConnect = func(context.Context, time.Duration, mdns.Logf) ([]mdns.Endpoint, error) {
+		return nil, errors.New("context deadline exceeded")
+	}
+	adbConnect = func(context.Context, string, string, int) (string, error) {
+		t.Fatal("connect ran adb connect without a discovered endpoint")
+		return "", nil
+	}
+
+	var err error
+	withDiscardedOutput(t, func() {
+		err = connect(runOptions{ADBPath: "/tmp/connect-adb", ConnectTimeout: time.Second})
+	})
+	if err == nil {
+		t.Fatal("connect succeeded, want discovery failure")
+	}
+
+	got := err.Error()
+	for _, want := range []string{
+		"no _adb-tls-connect._tcp announce appeared within 1s",
+		"context deadline exceeded",
+		"run wadb without arguments to pair a new one",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error %q does not contain %q", got, want)
+		}
+	}
+}
+
 func replaceHooks(t *testing.T) func() {
 	t.Helper()
 	oldFindADB := findADB

@@ -46,6 +46,16 @@ A QR code prints in the terminal. On your phone open
 
 Both the phone and the host must be on the same Wi-Fi network (no AP isolation between clients), and Wireless debugging must be enabled in Developer options.
 
+### Reconnecting
+
+Pairing survives reboots and Wi-Fi reconnects, but the port Android listens on does not — which is why a previously paired device disappears from `adb devices` after a reboot. Once a device has been paired, bring it back without scanning anything:
+
+```sh
+wadb connect
+```
+
+This skips the QR flow entirely: it browses `_adb-tls-connect._tcp` and connects to the first discovered device this host is already paired with. Devices paired with someone else are discovered too, but they reject the connection, so `wadb connect` simply moves on to the next one. Raise `--connect-timeout` if your device is slow to announce.
+
 Useful diagnostics:
 
 ```sh
@@ -97,7 +107,8 @@ If none match, set `ANDROID_HOME` or install platform-tools.
 | --- | --- |
 | *"did not see device announce within 2m"* | Phone could not reach the host over mDNS. Check same Wi-Fi subnet, no AP isolation, firewall not blocking UDP 5353. |
 | `adb pair` fails immediately | Stale daemon. Run `adb kill-server` and retry. |
-| Connect timeout after a successful pair | Some Android builds delay the connect announce. Re-run `wadb`, or run `adb connect <ip>:<port>` manually once Wireless debugging shows the device's port. |
+| Connect timeout after a successful pair | Some Android builds delay the connect announce. Run `wadb connect` (no need to pair again), or run `adb connect <ip>:<port>` manually once Wireless debugging shows the device's port. |
+| `wadb connect` finds nothing | The device is not advertising. Open Wireless debugging on the phone to wake the announce, and confirm the device was paired with this host. |
 
 ## Platform support
 
