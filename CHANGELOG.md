@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-15
+
 ### Changed
 
 - Release archives are now named `wadb-<os>-<arch>-<version>` instead of `wadb-<version>-<os>-<arch>`. Scripts that download a specific asset need the new pattern.
@@ -89,7 +91,8 @@ All notable changes to this project are documented here.
 - mDNS discovery for `_adb-tls-pairing._tcp` and `_adb-tls-connect._tcp`.
 - `adb pair` and `adb connect` orchestration.
 
-[Unreleased]: https://github.com/LinDevHard/wadb/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/LinDevHard/wadb/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/LinDevHard/wadb/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/LinDevHard/wadb/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/LinDevHard/wadb/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/LinDevHard/wadb/compare/v0.1.1...v0.2.0
