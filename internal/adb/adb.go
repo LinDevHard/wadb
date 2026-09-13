@@ -221,7 +221,7 @@ func StartServer(ctx context.Context, adbPath string) error {
 // on failure. Success is detected by the "Successfully paired" substring,
 // which adb prints on both stdout and stderr across versions.
 func Pair(ctx context.Context, adbPath, host string, port int, password string) error {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	cmd := exec.CommandContext(ctx, adbPath, "pair", addr, password)
 	out, err := cmd.CombinedOutput()
 	combined := string(out)
@@ -238,7 +238,7 @@ func Pair(ctx context.Context, adbPath, host string, port int, password string) 
 // success and "failed to connect" / "cannot connect" on failure, but still
 // exits 0 in some versions — so we inspect output.
 func Connect(ctx context.Context, adbPath, host string, port int) (string, error) {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	cmd := exec.CommandContext(ctx, adbPath, "connect", addr)
 	out, err := cmd.CombinedOutput()
 	combined := strings.TrimSpace(string(out))

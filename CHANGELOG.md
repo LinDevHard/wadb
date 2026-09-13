@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Added `wadb pair <host:port>` to pair with the six-digit code shown by Android as an alternative to scanning a QR code. The code is entered without echo and wadb connects automatically after pairing.
+
 ## [1.1.1] - 2026-08-15
 
 ### Changed

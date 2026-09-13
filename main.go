@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/signal"
 	"strconv"
@@ -14,6 +18,7 @@ import (
 	"github.com/lindevhard/wadb/internal/adb"
 	"github.com/lindevhard/wadb/internal/mdns"
 	"github.com/lindevhard/wadb/internal/pairing"
+	"golang.org/x/term"
 )
 
 const (
@@ -35,6 +40,7 @@ var (
 	adbDeviceName   = adb.DeviceName
 	browsePairing   = mdns.BrowsePairing
 	browseConnect   = mdns.BrowseConnect
+	readPairingCode = promptPairingCode
 )
 
 func main() {
@@ -60,6 +66,8 @@ func main() {
 		err = run(opts)
 	case flag.NArg() == 1 && flag.Arg(0) == "connect":
 		err = connect(opts)
+	case flag.NArg() == 2 && flag.Arg(0) == "pair":
+		err = pairByCode(opts, flag.Arg(1))
 	case flag.NArg() == 1 && flag.Arg(0) == "doctor":
 		err = doctor(opts)
 	default:
@@ -107,10 +115,11 @@ func registerFlags(fs *flag.FlagSet, env runOptions) (showVersion *bool, options
 
 func usage() {
 	w := flag.CommandLine.Output()
-	fmt.Fprintln(w, "wadb — pair Android devices over ADB Wi-Fi via a terminal QR code.")
+	fmt.Fprintln(w, "wadb — pair Android devices over ADB Wi-Fi via a terminal QR code or pairing code.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  wadb [flags]")
+	fmt.Fprintln(w, "  wadb [flags] pair <host:port>")
 	fmt.Fprintln(w, "  wadb [flags] connect")
 	fmt.Fprintln(w, "  wadb [flags] doctor")
 	fmt.Fprintln(w)
@@ -120,6 +129,7 @@ func usage() {
 	fmt.Fprintln(w, "pair and connect automatically, then exit.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
+	fmt.Fprintln(w, "  pair     pair using the address and six-digit code shown by the device")
 	fmt.Fprintln(w, "  connect  reconnect to a device already paired with this host, without a QR code")
 	fmt.Fprintln(w, "  doctor   report the local adb, its version, and mDNS services it can see")
 	fmt.Fprintln(w)
@@ -130,6 +140,59 @@ func usage() {
 	fmt.Fprintln(w, "  WADB_ADB, WADB_IFACE, WADB_PAIR_ONLY, WADB_QR_ASCII, WADB_QR_INVERT, WADB_QR_SIXEL,")
 	fmt.Fprintln(w, "  WADB_VERBOSE, WADB_PAIR_TIMEOUT, WADB_CONNECT_TIMEOUT")
 	fmt.Fprintln(w, "  CLI flags override environment values.")
+}
+
+func promptPairingCode() (string, error) {
+	fmt.Fprint(os.Stderr, "Enter pairing code: ")
+
+	var raw []byte
+	var err error
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		raw, err = term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr)
+	} else {
+		line, readErr := bufio.NewReader(os.Stdin).ReadString('\n')
+		raw = []byte(line)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			err = readErr
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("read pairing code: %w", err)
+	}
+
+	code := strings.TrimSpace(string(raw))
+	if err := validatePairingCode(code); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+func validatePairingCode(code string) error {
+	if len(code) != 6 {
+		return errors.New("pairing code must contain exactly six digits")
+	}
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return errors.New("pairing code must contain exactly six digits")
+		}
+	}
+	return nil
+}
+
+func parseEndpoint(address string) (mdns.Endpoint, error) {
+	host, portText, err := net.SplitHostPort(strings.TrimSpace(address))
+	if err != nil {
+		return mdns.Endpoint{}, fmt.Errorf("invalid pairing address %q: expected host:port (IPv6 addresses need brackets): %w", address, err)
+	}
+	if host == "" {
+		return mdns.Endpoint{}, fmt.Errorf("invalid pairing address %q: host is empty", address)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 1 || port > 65535 {
+		return mdns.Endpoint{}, fmt.Errorf("invalid pairing address %q: port must be between 1 and 65535", address)
+	}
+	return mdns.Endpoint{Host: host, Port: port}, nil
 }
 
 func doctor(opts runOptions) error {
@@ -385,11 +448,11 @@ func adbReportedConnectEndpoints(ctx context.Context, adbPath string, logf mdns.
 func connectToEndpoints(ctx context.Context, adbPath string, endpoints []mdns.Endpoint) error {
 	var failures []string
 	for _, ep := range endpoints {
-		fmt.Printf("Connecting to %s:%d...\n", ep.Host, ep.Port)
+		addr := net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port))
+		fmt.Printf("Connecting to %s...\n", addr)
 		out, err := adbConnect(ctx, adbPath, ep.Host, ep.Port)
 		if err == nil {
 			fmt.Println(out)
-			addr := fmt.Sprintf("%s:%d", ep.Host, ep.Port)
 			if name, err := adbDeviceName(ctx, adbPath, addr); err == nil && name != "" {
 				fmt.Println("Device:", name)
 			}
@@ -424,6 +487,52 @@ func connect(opts runOptions) error {
 	}
 
 	return connectToEndpoints(ctx, adbPath, endpoints)
+}
+
+// pairByCode pairs with the address and one-time code shown by Android's
+// "Pair device with pairing code" dialog. The pairing endpoint is not the
+// endpoint used for adb connections, so a successful pair is followed by the
+// same mDNS connect discovery as the QR flow.
+func pairByCode(opts runOptions, address string) error {
+	pairEP, err := parseEndpoint(address)
+	if err != nil {
+		return err
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	mdnsOpts, err := opts.mdnsOptions()
+	if err != nil {
+		return err
+	}
+
+	adbPath, err := setupADB(ctx, opts)
+	if err != nil {
+		return err
+	}
+
+	code, err := readPairingCode()
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Pairing with %s...\n", net.JoinHostPort(pairEP.Host, strconv.Itoa(pairEP.Port)))
+	if err := adbPair(ctx, adbPath, pairEP.Host, pairEP.Port, code); err != nil {
+		return err
+	}
+	fmt.Println("Paired successfully.")
+	if opts.PairOnly {
+		fmt.Println("Pair-only mode enabled; skipping adb connect.")
+		return nil
+	}
+
+	fmt.Println("Waiting for device to announce on _adb-tls-connect._tcp...")
+	connEPs, err := discoverConnectEndpoints(ctx, adbPath, opts.ConnectTimeout, pairEP.Host, mdnsOpts)
+	if err != nil {
+		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nretry with wadb connect, or run adb connect manually using the host and port shown in Wireless debugging", opts.ConnectTimeout, err)
+	}
+	return connectToEndpoints(ctx, adbPath, connEPs)
 }
 
 func run(opts runOptions) error {

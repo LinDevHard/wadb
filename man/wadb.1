@@ -1,9 +1,14 @@
-.TH WADB 1 "2026-08-15" "wadb" "User Commands"
+.TH WADB 1 "2026-09-14" "wadb" "User Commands"
 .SH NAME
-wadb \- pair Android devices over ADB Wi\-Fi via a terminal QR code
+wadb \- pair Android devices over ADB Wi\-Fi via a terminal QR code or pairing code
 .SH SYNOPSIS
 .B wadb
 .RI [ flags ]
+.br
+.B wadb
+.RI [ flags ]
+.B pair
+.I host:port
 .br
 .B wadb
 .RI [ flags ]
@@ -39,6 +44,15 @@ announce and runs
 The TLS pairing handshake itself is handled by
 .BR adb (1).
 .SH COMMANDS
+.TP
+.BI pair " host:port"
+Pair using the address and six\-digit code shown by
+.B Wireless debugging \(-> Pair device with pairing code
+on the Android device. The code is requested without echoing it to the
+terminal. After pairing,
+.B wadb
+discovers the device's separate connection endpoint and connects automatically.
+IPv6 addresses must be enclosed in brackets.
 .TP
 .B connect
 Reconnect a device that is already paired with this host, without printing a QR
@@ -159,6 +173,14 @@ Pair and connect a new device:
 .RS
 .EX
 wadb
+.EE
+.RE
+.PP
+Pair using the address and code displayed by Android:
+.PP
+.RS
+.EX
+wadb pair 192.168.1.20:37123
 .EE
 .RE
 .PP

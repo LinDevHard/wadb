@@ -15,9 +15,11 @@ _wadb() {
         '-v[shorthand for --version]' \
         '--help[print usage and exit]' \
         '1:command:((
+            pair\:"pair using the address and six-digit code shown by the device"
             connect\:"reconnect a device already paired with this host"
             doctor\:"report the local adb, its version, and visible mDNS services"
-        ))'
+        ))' \
+		'2:pairing address (host\:port):'
 }
 
 _wadb "$@"

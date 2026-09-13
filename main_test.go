@@ -274,11 +274,123 @@ func TestPackagedFilesDocumentEveryFlag(t *testing.T) {
 				t.Errorf("%s does not mention %s", path, name)
 			}
 		}
-		for _, command := range []string{"connect", "doctor"} {
+		for _, command := range []string{"pair", "connect", "doctor"} {
 			if !strings.Contains(content, command) {
 				t.Errorf("%s does not mention the %s command", path, command)
 			}
 		}
+	}
+}
+
+func TestPairByCodePairsAndConnects(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	wantADB := "/tmp/pair-adb"
+	var pairedAddress, pairedCode, connectedAddress string
+
+	readPairingCode = func() (string, error) { return "123456", nil }
+	browsePairing = func(context.Context, string, mdns.Options) (mdns.Endpoint, error) {
+		t.Fatal("pair-by-code browsed for a QR pairing announce")
+		return mdns.Endpoint{}, nil
+	}
+	adbPair = func(_ context.Context, adbPath, host string, port int, code string) error {
+		if adbPath != wantADB {
+			t.Fatalf("Pair adbPath = %q, want %q", adbPath, wantADB)
+		}
+		pairedAddress = fmt.Sprintf("%s:%d", host, port)
+		pairedCode = code
+		return nil
+	}
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
+		return []mdns.Endpoint{
+			{Host: "192.168.1.99", Port: 40001},
+			{Host: "192.168.1.20", Port: 40002},
+		}, nil
+	}
+	adbConnect = func(_ context.Context, _ string, host string, port int) (string, error) {
+		connectedAddress = fmt.Sprintf("%s:%d", host, port)
+		return "connected", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		err := pairByCode(runOptions{
+			ADBPath:        wantADB,
+			ConnectTimeout: time.Second,
+		}, "192.168.1.20:37123")
+		if err != nil {
+			t.Fatalf("pairByCode: %v", err)
+		}
+	})
+
+	if pairedAddress != "192.168.1.20:37123" {
+		t.Fatalf("paired address = %q, want 192.168.1.20:37123", pairedAddress)
+	}
+	if pairedCode != "123456" {
+		t.Fatalf("pairing code = %q, want 123456", pairedCode)
+	}
+	if connectedAddress != "192.168.1.20:40002" {
+		t.Fatalf("connected address = %q, want preferred host 192.168.1.20:40002", connectedAddress)
+	}
+}
+
+func TestPairByCodePairOnlySkipsConnect(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	readPairingCode = func() (string, error) { return "654321", nil }
+	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
+		t.Fatal("pair-only mode browsed for a connect endpoint")
+		return nil, nil
+	}
+	adbConnect = func(context.Context, string, string, int) (string, error) {
+		t.Fatal("pair-only mode ran adb connect")
+		return "", nil
+	}
+
+	withDiscardedOutput(t, func() {
+		if err := pairByCode(runOptions{ADBPath: "/tmp/pair-adb", PairOnly: true}, "pixel.local:37123"); err != nil {
+			t.Fatalf("pairByCode: %v", err)
+		}
+	})
+}
+
+func TestPairByCodeRejectsInvalidAddressBeforeSetup(t *testing.T) {
+	restore := replaceHooks(t)
+	defer restore()
+
+	adbStartServer = func(context.Context, string) error {
+		t.Fatal("ADB server started for an invalid address")
+		return nil
+	}
+	readPairingCode = func() (string, error) {
+		t.Fatal("pairing code requested for an invalid address")
+		return "", nil
+	}
+
+	if err := pairByCode(runOptions{ADBPath: "/tmp/pair-adb"}, "192.168.1.20"); err == nil {
+		t.Fatal("pairByCode accepted an address without a port")
+	}
+}
+
+func TestValidatePairingCode(t *testing.T) {
+	for _, code := range []string{"", "12345", "1234567", "12a456", "１２３４５６"} {
+		if err := validatePairingCode(code); err == nil {
+			t.Errorf("validatePairingCode(%q) succeeded", code)
+		}
+	}
+	if err := validatePairingCode("012345"); err != nil {
+		t.Fatalf("validatePairingCode rejected valid code: %v", err)
+	}
+}
+
+func TestParseEndpointAcceptsIPv6(t *testing.T) {
+	got, err := parseEndpoint("[fe80::1234]:37123")
+	if err != nil {
+		t.Fatalf("parseEndpoint: %v", err)
+	}
+	if got.Host != "fe80::1234" || got.Port != 37123 {
+		t.Fatalf("parseEndpoint = %+v, want host fe80::1234 port 37123", got)
 	}
 }
 
@@ -811,6 +923,7 @@ func replaceHooks(t *testing.T) func() {
 	oldADBDeviceName := adbDeviceName
 	oldBrowsePairing := browsePairing
 	oldBrowseConnect := browseConnect
+	oldReadPairingCode := readPairingCode
 
 	findADB = func() (string, error) {
 		t.Fatal("findADB should not be called when ADBPath is explicit")
@@ -830,6 +943,7 @@ func replaceHooks(t *testing.T) func() {
 	browseConnect = func(context.Context, time.Duration, mdns.Options) ([]mdns.Endpoint, error) {
 		return nil, nil
 	}
+	readPairingCode = func() (string, error) { return "123456", nil }
 
 	return func() {
 		findADB = oldFindADB
@@ -841,6 +955,7 @@ func replaceHooks(t *testing.T) func() {
 		adbDeviceName = oldADBDeviceName
 		browsePairing = oldBrowsePairing
 		browseConnect = oldBrowseConnect
+		readPairingCode = oldReadPairingCode
 	}
 }
 

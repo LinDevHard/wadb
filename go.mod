@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/mdp/qrterminal/v3 v3.2.1
+	golang.org/x/term v0.44.0
 )
 
 require (
@@ -14,7 +15,6 @@ require (
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/tools v0.40.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )

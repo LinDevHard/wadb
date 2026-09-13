@@ -7,7 +7,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/lindevhard/wadb)](https://goreportcard.com/report/github.com/lindevhard/wadb)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Connect an Android 11+ device over ADB Wi-Fi by scanning a QR code from your terminal.
+Connect an Android 11+ device over ADB Wi-Fi by scanning a QR code from your terminal or entering the pairing code shown by Android.
 
 Same protocol as Android Studio's *Pair device using Wi-Fi*, but without launching the IDE — just run `wadb`, scan, done. After that first pairing, `wadb connect` brings the device back without a QR code.
 
@@ -45,6 +45,17 @@ A QR code prints in the terminal. On your phone open
 **Settings → Developer options → Wireless debugging → Pair device with QR code** and scan it. `wadb` will pair and connect automatically, then exit.
 
 Both the phone and the host must be on the same Wi-Fi network (no AP isolation between clients), and Wireless debugging must be enabled in Developer options.
+
+### Pairing with a code
+
+As an alternative to the QR code, open **Wireless debugging → Pair device with pairing code** on the phone. Android displays an IP address, port, and six-digit code. Pass the address to `wadb`:
+
+```sh
+wadb pair 192.168.1.20:37123
+Enter pairing code:
+```
+
+The code is read without echoing it to the terminal. After pairing, `wadb` discovers the device's separate connection port and connects automatically. Use `--pair-only` to stop after pairing. IPv6 addresses must use brackets, for example `wadb pair '[fe80::1234]:37123'`.
 
 ### Reconnecting
 
@@ -96,6 +107,8 @@ The same options can be set with environment variables: `WADB_ADB`, `WADB_IFACE`
 5. After a successful `adb connect`, `wadb` prints the result and, when available, the device name from Android system properties.
 
 The actual TLS pairing handshake is handled by `adb pair`; `wadb` only orchestrates discovery and credential generation.
+
+With `wadb pair <host:port>`, steps 2–3 are replaced by the address and pairing code displayed by Android; connection discovery then proceeds identically.
 
 ## Background
 

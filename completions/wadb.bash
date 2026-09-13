@@ -12,7 +12,7 @@ _wadb() {
     local cur prev commands flags
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="connect doctor"
+    commands="pair connect doctor"
     flags="--adb --iface --pair-only --qr-ascii --qr-invert --qr-sixel
            --verbose --pair-timeout --connect-timeout --version -v --help"
 

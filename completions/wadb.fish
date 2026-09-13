@@ -10,6 +10,7 @@ end
 
 complete -c wadb -f
 
+complete -c wadb -n __fish_use_subcommand -a pair -d 'Pair using the address and six-digit code shown by the device'
 complete -c wadb -n __fish_use_subcommand -a connect -d 'Reconnect a device already paired with this host'
 complete -c wadb -n __fish_use_subcommand -a doctor -d 'Report the local adb, its version, and visible mDNS services'
 
