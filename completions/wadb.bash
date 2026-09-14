@@ -12,9 +12,10 @@ _wadb() {
     local cur prev commands flags
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    commands="pair connect doctor"
-    flags="--adb --iface --pair-only --qr-ascii --qr-invert --qr-sixel
-           --verbose --pair-timeout --connect-timeout --version -v --help"
+    commands="pair connect devices disconnect doctor"
+	flags="--adb --iface --pair-only --qr-ascii --qr-invert --qr-sixel
+	       --verbose --pair-timeout --connect-timeout --scan-timeout --device
+	       --all --json --version -v --help"
 
     case "$prev" in
         --adb)
@@ -25,10 +26,14 @@ _wadb() {
             COMPREPLY=($(compgen -W "$(_wadb_interfaces)" -- "$cur"))
             return
             ;;
-        --pair-timeout|--connect-timeout)
+		--pair-timeout|--connect-timeout|--scan-timeout)
             COMPREPLY=($(compgen -W "30s 60s 2m 5m" -- "$cur"))
-            return
-            ;;
+			return
+			;;
+		--device)
+			COMPREPLY=()
+			return
+			;;
     esac
 
     if [[ "$cur" == -* ]]; then

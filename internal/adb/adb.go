@@ -34,6 +34,16 @@ type DeviceInfo struct {
 	Serial       string
 }
 
+// DeviceEntry is one row reported by `adb devices -l`.
+type DeviceEntry struct {
+	Serial      string
+	State       string
+	Product     string
+	Model       string
+	Device      string
+	TransportID string
+}
+
 func (d DeviceInfo) DisplayName() string {
 	parts := compactStrings(d.Manufacturer, d.Model)
 	name := strings.Join(parts, " ")
@@ -152,6 +162,60 @@ func MDNSServices(ctx context.Context, adbPath string) (string, error) {
 	return combined, nil
 }
 
+// Devices returns the devices known to the running adb server, including USB
+// devices and TCP endpoints. Callers can merge these rows with mDNS announces
+// to distinguish connected devices from endpoints that are merely advertising.
+func Devices(ctx context.Context, adbPath string) ([]DeviceEntry, error) {
+	cmd := exec.CommandContext(ctx, adbPath, "devices", "-l")
+	out, err := cmd.CombinedOutput()
+	combined := strings.TrimSpace(string(out))
+	if err != nil {
+		return nil, fmt.Errorf("adb devices -l: %w: %s", err, combined)
+	}
+	return ParseDevices(combined), nil
+}
+
+// ParseDevices parses the stable, whitespace-delimited output from
+// `adb devices -l`. Unknown detail fields are ignored for forward
+// compatibility with newer platform-tools releases.
+func ParseDevices(raw string) []DeviceEntry {
+	var devices []DeviceEntry
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "List of devices attached") || strings.HasPrefix(line, "* daemon") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		entry := DeviceEntry{Serial: fields[0], State: fields[1]}
+		details := fields[2:]
+		if entry.State == "no" && len(details) > 0 && details[0] == "permissions" {
+			entry.State = "no permissions"
+			details = details[1:]
+		}
+		for _, field := range details {
+			key, value, ok := strings.Cut(field, ":")
+			if !ok {
+				continue
+			}
+			switch key {
+			case "product":
+				entry.Product = value
+			case "model":
+				entry.Model = value
+			case "device":
+				entry.Device = value
+			case "transport_id":
+				entry.TransportID = value
+			}
+		}
+		devices = append(devices, entry)
+	}
+	return devices
+}
+
 // MDNSService is one entry of `adb mdns services`.
 type MDNSService struct {
 	Instance string
@@ -217,12 +281,14 @@ func StartServer(ctx context.Context, adbPath string) error {
 	return nil
 }
 
-// Pair runs `adb pair host:port password` and returns the stdout/stderr
-// on failure. Success is detected by the "Successfully paired" substring,
-// which adb prints on both stdout and stderr across versions.
+// Pair runs `adb pair host:port`, sends the password through stdin so it is not
+// exposed in the process arguments, and returns the stdout/stderr on failure.
+// Success is detected by the "Successfully paired" substring, which adb prints
+// on both stdout and stderr across versions.
 func Pair(ctx context.Context, adbPath, host string, port int, password string) error {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	cmd := exec.CommandContext(ctx, adbPath, "pair", addr, password)
+	cmd := exec.CommandContext(ctx, adbPath, "pair", addr)
+	cmd.Stdin = strings.NewReader(password + "\n")
 	out, err := cmd.CombinedOutput()
 	combined := string(out)
 	if err != nil {
@@ -232,6 +298,22 @@ func Pair(ctx context.Context, adbPath, host string, port int, password string) 
 		return fmt.Errorf("adb pair %s: unexpected output: %s", addr, strings.TrimSpace(combined))
 	}
 	return nil
+}
+
+// Disconnect disconnects one TCP endpoint, or every TCP endpoint when address
+// is empty. USB transports are not affected by adb disconnect.
+func Disconnect(ctx context.Context, adbPath, address string) (string, error) {
+	args := []string{"disconnect"}
+	if address != "" {
+		args = append(args, address)
+	}
+	cmd := exec.CommandContext(ctx, adbPath, args...)
+	out, err := cmd.CombinedOutput()
+	combined := strings.TrimSpace(string(out))
+	if err != nil {
+		return combined, fmt.Errorf("adb disconnect: %w: %s", err, combined)
+	}
+	return combined, nil
 }
 
 // Connect runs `adb connect host:port`. adb prints "connected to ..." on

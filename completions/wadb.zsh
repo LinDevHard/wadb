@@ -10,13 +10,19 @@ _wadb() {
         '--qr-sixel[render the QR code as a sixel image]' \
         '--verbose[print discovered mDNS service entries to stderr]' \
         '--pair-timeout=[time to wait for the pairing mDNS announce]:duration:(30s 60s 2m 5m)' \
-        '--connect-timeout=[time to wait for the connect mDNS announce]:duration:(15s 30s 60s 2m)' \
+		'--connect-timeout=[time to wait for the connect mDNS announce]:duration:(15s 30s 60s 2m)' \
+		'--scan-timeout=[time to scan for devices]:duration:(1s 3s 5s 10s)' \
+		'--device=[device serial, address, host, or mDNS instance]:device:' \
+		'--all[operate on every matching wireless device]' \
+		'--json[write machine-readable JSON output]' \
         '--version[print version and exit]' \
         '-v[shorthand for --version]' \
         '--help[print usage and exit]' \
         '1:command:((
             pair\:"pair using the address and six-digit code shown by the device"
             connect\:"reconnect a device already paired with this host"
+			devices\:"list devices known to adb and wireless debugging announces"
+			disconnect\:"disconnect one or all wireless devices"
             doctor\:"report the local adb, its version, and visible mDNS services"
         ))' \
 		'2:pairing address (host\:port):'

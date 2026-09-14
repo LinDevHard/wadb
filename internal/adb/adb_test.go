@@ -1,12 +1,32 @@
 package adb
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestPairSendsCodeThroughStdin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("posix-only test")
+	}
+	fake := filepath.Join(t.TempDir(), "adb")
+	script := "#!/bin/sh\n" +
+		"test \"$#\" -eq 2 || exit 2\n" +
+		"test \"$1\" = pair || exit 3\n" +
+		"IFS= read -r code\n" +
+		"test \"$code\" = 123456 || exit 4\n" +
+		"echo Successfully paired to \"$2\"\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Pair(context.Background(), fake, "192.168.1.20", 37123, "123456"); err != nil {
+		t.Fatalf("Pair: %v", err)
+	}
+}
 
 // TestFindPrefersAndroidHome creates a fake adb in a temp ANDROID_HOME and
 // verifies Find() returns it ahead of $PATH and other candidates.
@@ -140,6 +160,34 @@ func TestParseMDNSServiceEntries(t *testing.T) {
 func TestParseMDNSServiceEntriesWithoutServices(t *testing.T) {
 	if got := ParseMDNSServiceEntries("List of discovered mdns services\n\n"); len(got) != 0 {
 		t.Fatalf("parsed %d entries from an empty list: %+v", len(got), got)
+	}
+}
+
+func TestParseDevices(t *testing.T) {
+	raw := strings.Join([]string{
+		"List of devices attached",
+		"R3CN30ABCDE\tdevice product:dm3qxxx model:SM_S918B device:dm3q transport_id:1",
+		"192.168.1.20:40002 device product:husky model:Pixel_8_Pro device:husky transport_id:2",
+		"192.168.1.21:40003 offline transport_id:3",
+		"ZY123 no permissions (missing udev rules?); see [http://developer.android.com/tools/device.html]",
+		"",
+	}, "\n")
+
+	got := ParseDevices(raw)
+	if len(got) != 4 {
+		t.Fatalf("ParseDevices returned %d entries, want 4: %+v", len(got), got)
+	}
+	if got[0].Serial != "R3CN30ABCDE" || got[0].Model != "SM_S918B" || got[0].State != "device" {
+		t.Fatalf("ParseDevices USB entry = %+v", got[0])
+	}
+	if got[1].Serial != "192.168.1.20:40002" || got[1].Product != "husky" || got[1].Device != "husky" {
+		t.Fatalf("ParseDevices TCP entry = %+v", got[1])
+	}
+	if got[2].State != "offline" || got[2].TransportID != "3" {
+		t.Fatalf("ParseDevices offline entry = %+v", got[2])
+	}
+	if got[3].State != "no permissions" {
+		t.Fatalf("ParseDevices no-permissions entry = %+v", got[3])
 	}
 }
 

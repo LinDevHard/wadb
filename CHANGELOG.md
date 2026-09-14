@@ -7,6 +7,12 @@ All notable changes to this project are documented here.
 ### Added
 
 - Added `wadb pair <host:port>` to pair with the six-digit code shown by Android as an alternative to scanning a QR code. The code is entered without echo and wadb connects automatically after pairing.
+- Added the v1.2 Device Manager: `wadb devices`, device selection for `connect`, `connect --all`, `disconnect`, direct plus adb-cached mDNS discovery, stable device IDs when available, transport/status metadata, and JSON output.
+- Flags can now appear after subcommands, so both `wadb --verbose devices` and `wadb devices --verbose` work.
+
+### Security
+
+- Pairing codes are now sent to the interactive stdin of `adb pair` instead of appearing in its process arguments.
 
 ## [1.1.1] - 2026-08-15
 

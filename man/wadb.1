@@ -1,6 +1,7 @@
 .TH WADB 1 "2026-09-14" "wadb" "User Commands"
 .SH NAME
-wadb \- pair Android devices over ADB Wi\-Fi via a terminal QR code or pairing code
+wadb \- pair Android devices over ADB Wi\-Fi via a terminal QR code or
+pairing code
 .SH SYNOPSIS
 .B wadb
 .RI [ flags ]
@@ -13,6 +14,14 @@ wadb \- pair Android devices over ADB Wi\-Fi via a terminal QR code or pairing c
 .B wadb
 .RI [ flags ]
 .B connect
+.br
+.B wadb
+.RI [ flags ]
+.B devices
+.br
+.B wadb
+.RI [ flags ]
+.B disconnect
 .br
 .B wadb
 .RI [ flags ]
@@ -30,6 +39,8 @@ This is the same protocol Android Studio uses for
 .IR "Pair device using Wi-Fi" .
 The phone and the host must share a Wi\-Fi network with no AP isolation, and
 Wireless debugging must be enabled in Developer options.
+.PP
+Options may appear before or after a command.
 .PP
 .B wadb
 generates a single\-use service name and password, renders them as a QR code,
@@ -60,6 +71,23 @@ code. Pairing survives reboots and Wi\-Fi changes, but the port Android listens
 on does not, so this is the command to reach for when a known device stops
 appearing in
 .BR "adb devices" .
+.TP
+.B devices
+List devices known to
+.B adb
+alongside Wireless debugging endpoints from a direct mDNS scan and the adb
+mDNS cache. Connected devices include their adb state and model; endpoints
+that are announcing but not connected are shown as
+.BR discovered .
+Use
+.B \-\-json
+for machine-readable output.
+.TP
+.B disconnect
+Disconnect a wireless device selected with
+.BR \-\-device ,
+or every TCP/IP device with
+.BR \-\-all .
 .TP
 .B doctor
 Report the local
@@ -108,6 +136,34 @@ How long to wait for the pairing announce. Default 2m.
 .BI \-\-connect\-timeout " duration"
 How long to wait for the connect announce. Default 30s.
 .TP
+.BI \-\-scan\-timeout " duration"
+How long the
+.B devices
+and
+.B disconnect
+commands scan for Wireless debugging announces. Default 3s.
+.TP
+.BI \-\-device " selector"
+Select a device by stable serial, address, host, or full mDNS instance. Used by
+.B connect
+and
+.BR disconnect ;
+also filters
+.BR devices .
+.TP
+.B \-\-all
+Operate on every matching wireless device. Supported by
+.B connect
+and
+.BR disconnect .
+.TP
+.B \-\-json
+Write machine-readable JSON output. Supported by
+.BR devices ,
+.BR connect ,
+and
+.BR disconnect .
+.TP
 .B \-\-version
 Print the version and exit.
 .B \-v
@@ -154,6 +210,22 @@ Same as
 .B WADB_CONNECT_TIMEOUT
 Same as
 .BR \-\-connect\-timeout .
+.TP
+.B WADB_SCAN_TIMEOUT
+Same as
+.BR \-\-scan\-timeout .
+.TP
+.B WADB_DEVICE
+Same as
+.BR \-\-device .
+.TP
+.B WADB_ALL
+Same as
+.BR \-\-all .
+.TP
+.B WADB_JSON
+Same as
+.BR \-\-json .
 .PP
 Boolean variables accept values such as true, false, 1, or 0. Duration
 variables accept values such as 30s or 3m.
@@ -189,6 +261,23 @@ Reconnect a device paired earlier, over a specific interface:
 .RS
 .EX
 wadb \-\-iface en0 connect
+.EE
+.RE
+.PP
+List connected and discovered devices:
+.PP
+.RS
+.EX
+wadb devices
+.EE
+.RE
+.PP
+Connect a specific device, then disconnect all wireless devices:
+.PP
+.RS
+.EX
+wadb connect \-\-device RF8M1234ABC
+wadb disconnect \-\-all
 .EE
 .RE
 .PP

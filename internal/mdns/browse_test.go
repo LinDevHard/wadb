@@ -1,9 +1,22 @@
 package mdns
 
 import (
+	"net"
 	"strings"
 	"testing"
+
+	"github.com/grandcat/zeroconf"
 )
+
+func TestPickAddrScopesLinkLocalIPv6(t *testing.T) {
+	entry := &zeroconf.ServiceEntry{AddrIPv6: []net.IP{net.ParseIP("fe80::1234")}}
+	if got := pickAddr(entry, "en0"); got != "fe80::1234%en0" {
+		t.Fatalf("pickAddr scoped IPv6 = %q, want fe80::1234%%en0", got)
+	}
+	if got := pickAddr(entry, ""); got != "" {
+		t.Fatalf("pickAddr unscoped link-local IPv6 = %q, want empty", got)
+	}
+}
 
 func TestCheckInterfaceRejectsUnknownName(t *testing.T) {
 	err := CheckInterface("wadb-does-not-exist0")

@@ -67,10 +67,37 @@ wadb connect
 
 This skips the QR flow entirely: it browses `_adb-tls-connect._tcp` and connects to the first discovered device this host is already paired with. Devices paired with someone else are discovered too, but they reject the connection, so `wadb connect` simply moves on to the next one. Raise `--connect-timeout` if your device is slow to announce.
 
+### Listing devices
+
+```sh
+wadb devices
+wadb devices --json
+```
+
+This combines `adb devices -l`, wadb's direct mDNS scan, and the mDNS cache maintained by adb. Connected USB and Wi-Fi devices keep their adb state and model; an endpoint that is announcing but not connected is shown as `discovered`. Duplicate USB and Wi-Fi entries are merged when the mDNS instance exposes the same device serial.
+
+Connect one discovered device by serial, address, host, or full mDNS instance, or try every discovered device paired with this host:
+
+```sh
+wadb connect --device RF8M1234ABC
+wadb connect --all
+```
+
+Disconnect one Wi-Fi endpoint or every Wi-Fi device:
+
+```sh
+wadb disconnect --device 192.168.1.20:40002
+wadb disconnect --all
+```
+
+Flags can appear before or after a command. `--json` is supported by `devices`, `connect`, and `disconnect` for scripts and integrations.
+
 Useful diagnostics:
 
 ```sh
 wadb doctor
+wadb devices
+wadb devices --scan-timeout 5s
 wadb --verbose
 wadb --iface en0
 wadb --pair-timeout 3m --connect-timeout 45s
@@ -96,7 +123,7 @@ If the phone will not scan the code, the rendering is usually to blame:
 | `--qr-ascii` | Font or emulator renders half blocks poorly, leaving the code smeared or gapped. |
 | `--qr-sixel` | Terminal speaks sixel (iTerm2, WezTerm, foot, mlterm). Draws the code as an image with its own black-on-white palette, so it scans under any theme. |
 
-The same options can be set with environment variables: `WADB_ADB`, `WADB_IFACE`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_QR_INVERT`, `WADB_QR_SIXEL`, `WADB_VERBOSE`, `WADB_PAIR_TIMEOUT`, and `WADB_CONNECT_TIMEOUT`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
+The same options can be set with environment variables: `WADB_ADB`, `WADB_IFACE`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_QR_INVERT`, `WADB_QR_SIXEL`, `WADB_VERBOSE`, `WADB_PAIR_TIMEOUT`, `WADB_CONNECT_TIMEOUT`, `WADB_SCAN_TIMEOUT`, `WADB_DEVICE`, `WADB_ALL`, and `WADB_JSON`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
 
 ## How it works
 

@@ -20,8 +20,9 @@ const (
 )
 
 type Endpoint struct {
-	Host string
-	Port int
+	Instance string
+	Host     string
+	Port     int
 }
 
 type Logf func(format string, args ...any)
@@ -179,11 +180,11 @@ func browseUntil(ctx context.Context, service string, match func(*zeroconf.Servi
 				continue
 			}
 			logEntry(opts.Logf, service, e)
-			host := pickAddr(e)
+			host := pickAddr(e, opts.Iface)
 			if host == "" {
 				continue
 			}
-			return Endpoint{Host: host, Port: e.Port}, nil
+			return Endpoint{Instance: e.Instance, Host: host, Port: e.Port}, nil
 		}
 	}
 }
@@ -203,7 +204,11 @@ func browseCandidates(ctx context.Context, service string, match func(*zeroconf.
 	}
 
 	var endpoints []Endpoint
-	seen := make(map[Endpoint]bool)
+	type endpointAddress struct {
+		Host string
+		Port int
+	}
+	seen := make(map[endpointAddress]bool)
 	var settleTimer <-chan time.Time
 
 	for {
@@ -226,15 +231,16 @@ func browseCandidates(ctx context.Context, service string, match func(*zeroconf.
 			if e == nil || !match(e) {
 				continue
 			}
-			host := pickAddr(e)
+			host := pickAddr(e, opts.Iface)
 			if host == "" {
 				continue
 			}
-			ep := Endpoint{Host: host, Port: e.Port}
-			if seen[ep] {
+			ep := Endpoint{Instance: e.Instance, Host: host, Port: e.Port}
+			key := endpointAddress{Host: ep.Host, Port: ep.Port}
+			if seen[key] {
 				continue
 			}
-			seen[ep] = true
+			seen[key] = true
 			endpoints = append(endpoints, ep)
 			if settleTimer == nil {
 				settleTimer = time.After(settle)
@@ -269,7 +275,7 @@ func ips(addrs []net.IP) []string {
 	return out
 }
 
-func pickAddr(e *zeroconf.ServiceEntry) string {
+func pickAddr(e *zeroconf.ServiceEntry, iface string) string {
 	for _, ip := range e.AddrIPv4 {
 		if ip != nil && !ip.IsUnspecified() {
 			return ip.String()
@@ -277,6 +283,12 @@ func pickAddr(e *zeroconf.ServiceEntry) string {
 	}
 	for _, ip := range e.AddrIPv6 {
 		if ip != nil && !ip.IsUnspecified() {
+			if ip.IsLinkLocalUnicast() {
+				if iface != "" {
+					return ip.String() + "%" + iface
+				}
+				continue
+			}
 			return ip.String()
 		}
 	}
