@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-14
+
 ### Added
 
 - Added `wadb pair <host:port>` to pair with the six-digit code shown by Android as an alternative to scanning a QR code. The code is entered without echo and wadb connects automatically after pairing.
@@ -101,7 +103,8 @@ All notable changes to this project are documented here.
 - mDNS discovery for `_adb-tls-pairing._tcp` and `_adb-tls-connect._tcp`.
 - `adb pair` and `adb connect` orchestration.
 
-[Unreleased]: https://github.com/LinDevHard/wadb/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/LinDevHard/wadb/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/LinDevHard/wadb/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/LinDevHard/wadb/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/LinDevHard/wadb/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/LinDevHard/wadb/compare/v0.2.0...v1.0.0
