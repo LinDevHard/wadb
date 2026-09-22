@@ -271,10 +271,6 @@ func normalizeCLIArgs(args []string) ([]string, error) {
 	return append(options, positional...), nil
 }
 
-func usage() {
-	usageFor(flag.CommandLine)
-}
-
 func usageFor(fs *flag.FlagSet) {
 	w := fs.Output()
 	fmt.Fprintln(w, "wadb — pair Android devices over ADB Wi-Fi via a terminal QR code or pairing code.")
