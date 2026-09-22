@@ -49,60 +49,150 @@ var (
 	browsePairing   = mdns.BrowsePairing
 	browseConnect   = mdns.BrowseConnect
 	readPairingCode = promptPairingCode
+	stdinIsTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 )
 
 func main() {
+	os.Exit(executeCLI(os.Args[1:]))
+}
+
+func executeCLI(args []string) int {
+	jsonRequested := wantsStructuredJSON(args)
 	envOpts, err := loadEnvOptions()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(2)
+		return finishCLIError("unknown", usageError{err}, jsonRequested, nil)
 	}
 
-	showVersion, options := registerFlags(flag.CommandLine, envOpts)
-	flag.Usage = usage
-	normalizedArgs, err := normalizeCLIArgs(os.Args[1:])
+	fs := flag.NewFlagSet("wadb", flag.ContinueOnError)
+	// Parse quietly so JSON mode never receives flag-package prose and human
+	// mode can print each error or help screen exactly once below.
+	fs.SetOutput(io.Discard)
+	showVersion, options := registerFlags(fs, envOpts)
+	fs.Usage = func() { usageFor(fs) }
+	normalizedArgs, err := normalizeCLIArgs(args)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(2)
+		if !jsonRequested {
+			fs.SetOutput(os.Stderr)
+		}
+		return finishCLIError(commandAction(args), usageError{err}, jsonRequested, fs.Usage)
 	}
-	if err := flag.CommandLine.Parse(normalizedArgs); err != nil {
-		os.Exit(2)
+	if err := fs.Parse(normalizedArgs); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			if jsonRequested {
+				if jsonErr := writeJSONSuccess("help", map[string]string{"usage": "Run wadb --help without --output json for terminal usage."}); jsonErr != nil {
+					fmt.Fprintln(os.Stderr, "error:", jsonErr)
+					return 1
+				}
+				return 0
+			}
+			fs.SetOutput(os.Stderr)
+			fs.Usage()
+			return 0
+		}
+		if !jsonRequested {
+			fs.SetOutput(os.Stderr)
+		}
+		return finishCLIError(commandAction(args), usageError{err}, jsonRequested, fs.Usage)
 	}
-
-	if *showVersion {
-		fmt.Println(version)
-		return
+	if !jsonRequested {
+		fs.SetOutput(os.Stderr)
 	}
 
 	opts := options()
+	if err := opts.validateOutput(); err != nil {
+		return finishCLIError(commandAction(args), usageError{err}, opts.structuredJSON(), fs.Usage)
+	}
+	if *showVersion {
+		if opts.structuredJSON() {
+			if err := writeJSONSuccess("version", map[string]string{"version": version}); err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 1
+			}
+		} else {
+			fmt.Println(version)
+		}
+		return 0
+	}
 
+	action := "unknown"
 	switch {
-	case flag.NArg() == 0:
+	case fs.NArg() == 0:
+		action = "pair"
 		err = run(opts)
-	case flag.NArg() == 1 && flag.Arg(0) == "connect":
+	case fs.NArg() == 1 && fs.Arg(0) == "connect":
+		action = "connect"
 		err = connect(opts)
-	case flag.NArg() == 1 && flag.Arg(0) == "devices":
+	case fs.NArg() == 1 && fs.Arg(0) == "devices":
+		action = "devices"
 		err = devices(opts)
-	case flag.NArg() == 1 && flag.Arg(0) == "disconnect":
+	case fs.NArg() == 1 && fs.Arg(0) == "disconnect":
+		action = "disconnect"
 		err = disconnect(opts)
-	case flag.NArg() == 2 && flag.Arg(0) == "pair":
-		err = pairByCode(opts, flag.Arg(1))
-	case flag.NArg() == 1 && flag.Arg(0) == "doctor":
+	case fs.NArg() == 2 && fs.Arg(0) == "pair":
+		action = "pair"
+		err = pairByCode(opts, fs.Arg(1))
+	case fs.NArg() == 1 && fs.Arg(0) == "doctor":
+		action = "doctor"
 		err = doctor(opts)
+	case fs.NArg() == 1 && fs.Arg(0) == "capabilities":
+		action = "capabilities"
+		err = capabilities(opts)
+	case fs.NArg() == 1 && fs.Arg(0) == "schema":
+		action = "schema"
+		err = printSchema(opts)
 	default:
-		fmt.Fprintf(os.Stderr, "error: unexpected positional arguments: %v\n\n", flag.Args())
-		flag.Usage()
-		os.Exit(2)
+		err = usageError{fmt.Errorf("unexpected positional arguments: %v", fs.Args())}
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		exitCode := 1
-		var invalidUsage usageError
-		if errors.As(err, &invalidUsage) {
-			exitCode = 2
-		}
-		os.Exit(exitCode)
+		return finishCLIError(action, err, opts.structuredJSON(), fs.Usage)
 	}
+	return 0
+}
+
+func finishCLIError(action string, err error, jsonOutput bool, printUsage func()) int {
+	if jsonOutput {
+		if jsonErr := writeJSONFailure(action, err); jsonErr != nil {
+			fmt.Fprintln(os.Stderr, "error:", jsonErr)
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		var invalidUsage usageError
+		if errors.As(err, &invalidUsage) && printUsage != nil {
+			fmt.Fprintln(os.Stderr)
+			printUsage()
+		}
+	}
+	var invalidUsage usageError
+	if errors.As(err, &invalidUsage) {
+		return 2
+	}
+	return 1
+}
+
+func wantsStructuredJSON(args []string) bool {
+	wanted := strings.EqualFold(strings.TrimSpace(os.Getenv("WADB_OUTPUT")), "json")
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--output" && i+1 < len(args) {
+			i++
+			wanted = strings.EqualFold(args[i], "json")
+			continue
+		}
+		if strings.HasPrefix(arg, "--output=") {
+			wanted = strings.EqualFold(strings.TrimPrefix(arg, "--output="), "json")
+		}
+	}
+	return wanted
+}
+
+func commandAction(args []string) string {
+	for _, arg := range args {
+		switch arg {
+		case "pair", "connect", "devices", "disconnect", "doctor", "capabilities", "schema":
+			return arg
+		}
+	}
+	return "unknown"
 }
 
 // registerFlags defines every flag on fs, taking defaults from env, and
@@ -119,12 +209,14 @@ func registerFlags(fs *flag.FlagSet, env runOptions) (showVersion *bool, options
 	qrInvert := fs.Bool("qr-invert", env.QRInvert, "invert the QR code for terminals with a light background (env: WADB_QR_INVERT)")
 	qrSixel := fs.Bool("qr-sixel", env.QRSixel, "render the QR code as a sixel image (env: WADB_QR_SIXEL)")
 	verbose := fs.Bool("verbose", env.Verbose, "print discovered mDNS service entries to stderr (env: WADB_VERBOSE)")
+	nonInteractive := fs.Bool("non-interactive", env.NonInteractive, "never prompt on a terminal; pairing codes may come from redirected stdin (env: WADB_NON_INTERACTIVE)")
 	pairingTimeout := fs.Duration("pair-timeout", env.PairingTimeout, "time to wait for the pairing mDNS announce (env: WADB_PAIR_TIMEOUT)")
 	connectTimeout := fs.Duration("connect-timeout", env.ConnectTimeout, "time to wait for the connect mDNS announce (env: WADB_CONNECT_TIMEOUT)")
 	scanTimeout := fs.Duration("scan-timeout", env.ScanTimeout, "time to scan for devices (env: WADB_SCAN_TIMEOUT)")
 	device := fs.String("device", env.Device, "device serial, address, host, or mDNS instance (env: WADB_DEVICE)")
 	all := fs.Bool("all", env.All, "operate on every matching wireless device (env: WADB_ALL)")
-	jsonOutput := fs.Bool("json", env.JSON, "write machine-readable JSON output (env: WADB_JSON)")
+	jsonOutput := fs.Bool("json", env.JSON, "write legacy v1.2 JSON array output (env: WADB_JSON)")
+	output := fs.String("output", env.Output, "output format: text or json (env: WADB_OUTPUT)")
 
 	return showVersion, func() runOptions {
 		return runOptions{
@@ -136,11 +228,13 @@ func registerFlags(fs *flag.FlagSet, env runOptions) (showVersion *bool, options
 			Device:         *device,
 			All:            *all,
 			JSON:           *jsonOutput,
+			Output:         *output,
 			PairOnly:       *pairOnly,
 			QRASCII:        *qrASCII,
 			QRInvert:       *qrInvert,
 			QRSixel:        *qrSixel,
 			Verbose:        *verbose,
+			NonInteractive: *nonInteractive,
 		}
 	}
 }
@@ -148,7 +242,7 @@ func registerFlags(fs *flag.FlagSet, env runOptions) (showVersion *bool, options
 func normalizeCLIArgs(args []string) ([]string, error) {
 	valueFlags := map[string]bool{
 		"adb": true, "iface": true, "pair-timeout": true, "connect-timeout": true,
-		"scan-timeout": true, "device": true,
+		"scan-timeout": true, "device": true, "output": true,
 	}
 	var options, positional []string
 	for i := 0; i < len(args); i++ {
@@ -178,7 +272,11 @@ func normalizeCLIArgs(args []string) ([]string, error) {
 }
 
 func usage() {
-	w := flag.CommandLine.Output()
+	usageFor(flag.CommandLine)
+}
+
+func usageFor(fs *flag.FlagSet) {
+	w := fs.Output()
 	fmt.Fprintln(w, "wadb — pair Android devices over ADB Wi-Fi via a terminal QR code or pairing code.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
@@ -188,6 +286,8 @@ func usage() {
 	fmt.Fprintln(w, "  wadb [flags] devices")
 	fmt.Fprintln(w, "  wadb [flags] disconnect")
 	fmt.Fprintln(w, "  wadb [flags] doctor")
+	fmt.Fprintln(w, "  wadb [flags] capabilities")
+	fmt.Fprintln(w, "  wadb [flags] schema")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "With no arguments, wadb prints a QR code. Scan it from")
 	fmt.Fprintln(w, "Settings → Developer options → Wireless debugging → Pair device with QR code")
@@ -200,37 +300,43 @@ func usage() {
 	fmt.Fprintln(w, "  devices  list devices known to adb and wireless debugging announces")
 	fmt.Fprintln(w, "  disconnect  disconnect one or all wireless devices")
 	fmt.Fprintln(w, "  doctor   report the local adb, its version, and mDNS services it can see")
+	fmt.Fprintln(w, "  capabilities  describe commands, side effects, interaction, and the JSON contract")
+	fmt.Fprintln(w, "  schema   print the embedded JSON Schema for --output json")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Flags:")
-	flag.PrintDefaults()
+	fs.PrintDefaults()
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Environment:")
 	fmt.Fprintln(w, "  WADB_ADB, WADB_IFACE, WADB_PAIR_ONLY, WADB_QR_ASCII, WADB_QR_INVERT, WADB_QR_SIXEL,")
-	fmt.Fprintln(w, "  WADB_VERBOSE, WADB_PAIR_TIMEOUT, WADB_CONNECT_TIMEOUT, WADB_SCAN_TIMEOUT,")
-	fmt.Fprintln(w, "  WADB_DEVICE, WADB_ALL, WADB_JSON")
+	fmt.Fprintln(w, "  WADB_VERBOSE, WADB_NON_INTERACTIVE, WADB_PAIR_TIMEOUT, WADB_CONNECT_TIMEOUT, WADB_SCAN_TIMEOUT,")
+	fmt.Fprintln(w, "  WADB_DEVICE, WADB_ALL, WADB_JSON, WADB_OUTPUT")
 	fmt.Fprintln(w, "  CLI flags override environment values.")
 }
 
 func promptPairingCode() (string, error) {
 	fmt.Fprint(os.Stderr, "Enter pairing code: ")
 
-	var raw []byte
-	var err error
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		raw, err = term.ReadPassword(int(os.Stdin.Fd()))
+	if stdinIsTerminal() {
+		raw, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Fprintln(os.Stderr)
-	} else {
-		line, readErr := bufio.NewReader(os.Stdin).ReadString('\n')
-		raw = []byte(line)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			err = readErr
+		if err != nil {
+			return "", fmt.Errorf("read pairing code: %w", err)
 		}
+		return validatedPairingCode(string(raw))
 	}
-	if err != nil {
+	return readPairingCodeFromReader(os.Stdin)
+}
+
+func readPairingCodeFromReader(reader io.Reader) (string, error) {
+	line, err := bufio.NewReader(reader).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("read pairing code: %w", err)
 	}
+	return validatedPairingCode(line)
+}
 
-	code := strings.TrimSpace(string(raw))
+func validatedPairingCode(raw string) (string, error) {
+	code := strings.TrimSpace(raw)
 	if err := validatePairingCode(code); err != nil {
 		return "", err
 	}
@@ -272,49 +378,124 @@ func doctor(opts runOptions) error {
 	if adbPath == "" {
 		found, err := findADB()
 		if err != nil {
-			return err
+			return withErrorCode("adb_not_found", err, "Install Android platform-tools or pass the adb path with --adb.")
 		}
 		adbPath = found
 	}
-	fmt.Println("adb:", adbPath)
+	result := doctorResult{
+		ADBPath:      adbPath,
+		ADBServer:    "running",
+		Interfaces:   []string{},
+		MDNSServices: []string{},
+		Warnings:     []string{},
+		Hints:        []string{},
+	}
+	if !opts.structuredJSON() {
+		fmt.Println("adb:", adbPath)
+	}
 
 	adbVersion, err := getADBVersion(ctx, adbPath)
 	if err != nil {
-		fmt.Println("adb version: warning:", err)
+		result.Warnings = append(result.Warnings, "adb version: "+err.Error())
+		if !opts.structuredJSON() {
+			fmt.Println("adb version: warning:", err)
+		}
 	} else if adbVersion.PlatformToolsMajor > 0 {
-		fmt.Println("platform-tools:", adbVersion.PlatformToolsMajor)
+		result.PlatformTools = adbVersion.PlatformToolsMajor
+		if !opts.structuredJSON() {
+			fmt.Println("platform-tools:", adbVersion.PlatformToolsMajor)
+		}
 		if !adbVersion.SupportsWifi2Improvements() {
-			fmt.Printf("warning: platform-tools before %d may miss newer ADB Wi-Fi mDNS and reconnect improvements.\n", adb.Wifi2PlatformToolsMajor)
+			warning := fmt.Sprintf("platform-tools before %d may miss newer ADB Wi-Fi mDNS and reconnect improvements", adb.Wifi2PlatformToolsMajor)
+			result.Warnings = append(result.Warnings, warning)
+			if !opts.structuredJSON() {
+				fmt.Println("warning:", warning+".")
+			}
 		}
 	} else {
-		fmt.Println("platform-tools: unknown")
-		if opts.Verbose {
+		result.ADBVersion = adbVersion.Raw
+		if !opts.structuredJSON() {
+			fmt.Println("platform-tools: unknown")
+		}
+		if opts.Verbose && !opts.structuredJSON() {
 			fmt.Println(adbVersion.Raw)
 		}
 	}
 
-	reportInterfaces(opts.Iface)
+	if opts.structuredJSON() {
+		var interfaceErr error
+		result.Interfaces, interfaceErr = inspectInterfaces(opts.Iface)
+		if interfaceErr != nil {
+			result.Warnings = append(result.Warnings, "interfaces: "+interfaceErr.Error())
+		}
+	} else {
+		reportInterfaces(opts.Iface)
+	}
 
 	if err := adbStartServer(ctx, adbPath); err != nil {
-		return err
+		return withErrorCode("adb_error", err, "Check the adb installation and run wadb doctor without --output json for details.")
 	}
-	fmt.Println("adb server: running")
+	if !opts.structuredJSON() {
+		fmt.Println("adb server: running")
+	}
 
 	services, err := adbMDNSServices(ctx, adbPath)
 	if err != nil {
-		fmt.Println("mDNS services: warning:", err)
-		fmt.Println("hint: if pairing hangs, check same Wi-Fi, AP isolation, firewall rules, and UDP 5353.")
-		return nil
+		result.Warnings = append(result.Warnings, "mDNS services: "+err.Error())
+		result.Hints = append(result.Hints, "If pairing hangs, check same Wi-Fi, AP isolation, firewall rules, and UDP 5353.")
+		if !opts.structuredJSON() {
+			fmt.Println("mDNS services: warning:", err)
+			fmt.Println("hint: if pairing hangs, check same Wi-Fi, AP isolation, firewall rules, and UDP 5353.")
+			return nil
+		}
+		return writeJSONSuccess("doctor", result)
 	}
 	serviceLines := adb.ParseMDNSServices(services)
+	result.MDNSServices = serviceLines
 	if len(serviceLines) == 0 {
-		fmt.Println("mDNS services: none reported by adb")
-		fmt.Println("hint: this is normal when no Android device is advertising Wireless debugging right now.")
+		result.Hints = append(result.Hints, "No mDNS services is normal when no Android device is advertising Wireless debugging.")
+		if !opts.structuredJSON() {
+			fmt.Println("mDNS services: none reported by adb")
+			fmt.Println("hint: this is normal when no Android device is advertising Wireless debugging right now.")
+			return nil
+		}
+		return writeJSONSuccess("doctor", result)
+	}
+	if !opts.structuredJSON() {
+		fmt.Println("mDNS services:")
+		fmt.Println(strings.Join(serviceLines, "\n"))
 		return nil
 	}
-	fmt.Println("mDNS services:")
-	fmt.Println(strings.Join(serviceLines, "\n"))
-	return nil
+	return writeJSONSuccess("doctor", result)
+}
+
+type doctorResult struct {
+	ADBPath       string   `json:"adb_path"`
+	ADBServer     string   `json:"adb_server"`
+	PlatformTools int      `json:"platform_tools,omitempty"`
+	ADBVersion    string   `json:"adb_version,omitempty"`
+	Interfaces    []string `json:"interfaces"`
+	MDNSServices  []string `json:"mdns_services"`
+	Warnings      []string `json:"warnings"`
+	Hints         []string `json:"hints"`
+}
+
+func inspectInterfaces(iface string) ([]string, error) {
+	if iface != "" {
+		if err := mdns.CheckInterface(iface); err != nil {
+			return []string{}, err
+		}
+		return []string{iface}, nil
+	}
+	ifaces, err := mdns.MulticastInterfaces()
+	if err != nil {
+		return []string{}, err
+	}
+	result := make([]string, 0, len(ifaces))
+	for _, candidate := range ifaces {
+		result = append(result, candidate.Name)
+	}
+	return result, nil
 }
 
 // reportInterfaces validates an explicit --iface, or lists the interfaces
@@ -354,11 +535,30 @@ type runOptions struct {
 	Device         string
 	All            bool
 	JSON           bool
+	Output         string
 	PairOnly       bool
 	QRASCII        bool
 	QRInvert       bool
 	QRSixel        bool
 	Verbose        bool
+	NonInteractive bool
+}
+
+func (o runOptions) structuredJSON() bool {
+	return strings.EqualFold(strings.TrimSpace(o.Output), "json")
+}
+
+func (o runOptions) machineOutput() bool {
+	return o.JSON || o.structuredJSON()
+}
+
+func (o runOptions) validateOutput() error {
+	switch strings.ToLower(strings.TrimSpace(o.Output)) {
+	case "", "text", "json":
+		return nil
+	default:
+		return fmt.Errorf("--output must be text or json: %q", o.Output)
+	}
 }
 
 // mdnsOptions builds the discovery options shared by the pair and connect
@@ -367,7 +567,7 @@ type runOptions struct {
 func (o runOptions) mdnsOptions() (mdns.Options, error) {
 	if o.Iface != "" {
 		if err := mdns.CheckInterface(o.Iface); err != nil {
-			return mdns.Options{}, err
+			return mdns.Options{}, usageError{err}
 		}
 	}
 	opts := mdns.Options{Iface: o.Iface}
@@ -389,6 +589,10 @@ func loadEnvOptions() (runOptions, error) {
 	opts.ADBPath = strings.TrimSpace(os.Getenv("WADB_ADB"))
 	opts.Iface = strings.TrimSpace(os.Getenv("WADB_IFACE"))
 	opts.Device = strings.TrimSpace(os.Getenv("WADB_DEVICE"))
+	opts.Output = strings.TrimSpace(os.Getenv("WADB_OUTPUT"))
+	if err := opts.validateOutput(); err != nil {
+		return runOptions{}, err
+	}
 
 	var err error
 	if opts.PairOnly, err = envBool("WADB_PAIR_ONLY", opts.PairOnly); err != nil {
@@ -404,6 +608,9 @@ func loadEnvOptions() (runOptions, error) {
 		return runOptions{}, err
 	}
 	if opts.Verbose, err = envBool("WADB_VERBOSE", opts.Verbose); err != nil {
+		return runOptions{}, err
+	}
+	if opts.NonInteractive, err = envBool("WADB_NON_INTERACTIVE", opts.NonInteractive); err != nil {
 		return runOptions{}, err
 	}
 	if opts.PairingTimeout, err = envDuration("WADB_PAIR_TIMEOUT", opts.PairingTimeout); err != nil {
@@ -456,7 +663,7 @@ func setupADB(ctx context.Context, opts runOptions) (string, error) {
 	if adbPath == "" {
 		found, err := findADB()
 		if err != nil {
-			return "", err
+			return "", withErrorCode("adb_not_found", err, "Install Android platform-tools or pass the adb path with --adb.")
 		}
 		adbPath = found
 	}
@@ -476,7 +683,7 @@ func setupADB(ctx context.Context, opts runOptions) (string, error) {
 	}
 
 	if err := adbStartServer(ctx, adbPath); err != nil {
-		return "", err
+		return "", withErrorCode("adb_error", err, "Check the adb installation and run wadb doctor --output json for diagnostics.")
 	}
 	return adbPath, nil
 }
@@ -489,6 +696,10 @@ func pairByCode(opts runOptions, address string) error {
 	pairEP, err := parseEndpoint(address)
 	if err != nil {
 		return usageError{err}
+	}
+	if opts.NonInteractive && stdinIsTerminal() {
+		err := usageError{errors.New("pairing by code needs redirected stdin in --non-interactive mode")}
+		return withErrorCode("interactive_required", err, "Provide the six-digit pairing code through redirected stdin, or remove --non-interactive and enter it at the terminal prompt.")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -504,30 +715,65 @@ func pairByCode(opts runOptions, address string) error {
 		return err
 	}
 
-	code, err := readPairingCode()
+	var code string
+	if opts.NonInteractive {
+		code, err = readPairingCodeFromReader(os.Stdin)
+	} else {
+		code, err = readPairingCode()
+	}
 	if err != nil {
-		return err
+		return withErrorCode("invalid_pairing_code", err, "Provide exactly six digits on stdin from Android's pairing dialog.")
 	}
 
-	fmt.Printf("Pairing with %s...\n", net.JoinHostPort(pairEP.Host, strconv.Itoa(pairEP.Port)))
+	if !opts.structuredJSON() {
+		fmt.Printf("Pairing with %s...\n", net.JoinHostPort(pairEP.Host, strconv.Itoa(pairEP.Port)))
+	}
 	if err := adbPair(ctx, adbPath, pairEP.Host, pairEP.Port, code); err != nil {
-		return err
+		return withErrorCode("pairing_failed", err, "Verify the six-digit pairing code and the pairing address shown by Android.")
 	}
-	fmt.Println("Paired successfully.")
+	if !opts.structuredJSON() {
+		fmt.Println("Paired successfully.")
+	}
 	if opts.PairOnly {
-		fmt.Println("Pair-only mode enabled; skipping adb connect.")
-		return nil
+		if !opts.structuredJSON() {
+			fmt.Println("Pair-only mode enabled; skipping adb connect.")
+			return nil
+		}
+		return writeJSONSuccess("pair", map[string]any{
+			"paired":          true,
+			"pairing_address": net.JoinHostPort(pairEP.Host, strconv.Itoa(pairEP.Port)),
+			"connected":       false,
+		})
 	}
 
-	fmt.Println("Waiting for device to announce on _adb-tls-connect._tcp...")
+	if !opts.structuredJSON() {
+		fmt.Println("Waiting for device to announce on _adb-tls-connect._tcp...")
+	}
 	connEPs, err := discoverConnectEndpoints(ctx, adbPath, opts.ConnectTimeout, pairEP.Host, mdnsOpts)
 	if err != nil {
-		return fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w\nretry with wadb connect, or run adb connect manually using the host and port shown in Wireless debugging", opts.ConnectTimeout, err)
+		wrapped := fmt.Errorf("paired successfully, but no _adb-tls-connect._tcp announce appeared within %s: %w", opts.ConnectTimeout, err)
+		return withErrorCode("discovery_timeout", wrapped, "Retry with wadb connect --output json, or use the connection address shown in Wireless debugging.")
 	}
-	return connectToEndpoints(ctx, adbPath, connEPs)
+	results, err := tryConnectEndpoints(ctx, adbPath, connEPs, false, opts.structuredJSON())
+	if err != nil {
+		return withErrorCode("connection_failed", err, "Keep Wireless debugging open and retry with wadb connect --output json.")
+	}
+	if opts.structuredJSON() {
+		return writeJSONSuccess("pair", map[string]any{
+			"paired":          true,
+			"pairing_address": net.JoinHostPort(pairEP.Host, strconv.Itoa(pairEP.Port)),
+			"connected":       true,
+			"connections":     results,
+		})
+	}
+	return nil
 }
 
 func run(opts runOptions) error {
+	if opts.structuredJSON() || opts.NonInteractive {
+		err := usageError{errors.New("QR pairing is interactive and cannot run with structured output or --non-interactive; use wadb pair <host:port> --non-interactive --output json and provide the six-digit code on redirected stdin")}
+		return withErrorCode("interactive_required", err, "Open Pair device with pairing code on Android, then provide the code through redirected stdin to wadb pair <host:port> --non-interactive --output json.")
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -573,7 +819,7 @@ func run(opts runOptions) error {
 	fmt.Printf("Found pairing endpoint %s:%d, pairing...\n", pairEP.Host, pairEP.Port)
 
 	if err := adbPair(ctx, adbPath, pairEP.Host, pairEP.Port, password); err != nil {
-		return err
+		return withErrorCode("pairing_failed", err, "Scan a newly generated QR code and verify that Wireless debugging remains enabled.")
 	}
 	fmt.Println("Paired successfully.")
 	if opts.PairOnly {

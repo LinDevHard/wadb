@@ -90,7 +90,58 @@ wadb disconnect --device 192.168.1.20:40002
 wadb disconnect --all
 ```
 
-Flags can appear before or after a command. `--json` is supported by `devices`, `connect`, and `disconnect` for scripts and integrations.
+Flags can appear before or after a command. The v1.2 `--json` array output remains available for compatible `devices`, `connect`, and `disconnect` scripts. Use `--output json` for the versioned agent contract supported by `pair`, `doctor`, `devices`, `connect`, `disconnect`, `capabilities`, `schema`, and `--version`. QR pairing remains interactive and rejects structured output; use pairing by code for a non-interactive integration.
+
+### AI agents and automation
+
+Agents with access to the user's local shell can use wadb without parsing terminal prose:
+
+```sh
+wadb doctor --non-interactive --output json
+wadb devices --non-interactive --output json
+wadb connect --device RF8M1234ABC --non-interactive --output json
+```
+
+Every `--output json` invocation writes one versioned response to stdout and keeps progress on stderr. In structured mode, `connect` refuses to choose silently when multiple devices are available; pass `--device` or explicitly request `--all`.
+
+For pairing by code, start `wadb pair <host:port> --non-interactive --output json` and provide the six-digit code through redirected stdin, never as a command argument. `--non-interactive` guarantees that wadb will not prompt on a terminal. First-time QR pairing still needs the user to scan the terminal QR code.
+
+Agents can inspect the available operations, side effects, interaction requirements, stable error codes, and contract location without starting adb or scanning the network:
+
+```sh
+wadb capabilities --non-interactive --output json
+```
+
+The published JSON Schema is [`schemas/wadb-output-v1.schema.json`](schemas/wadb-output-v1.schema.json) and is also embedded in every binary:
+
+```sh
+wadb schema
+```
+
+Error objects include `retryable` and `requires_user_action` so an integration can distinguish retries from cases that need the user.
+
+See the [agent integration contract](docs/agent-integration.md). A companion Agent Skill is available at [`skills/wadb/SKILL.md`](skills/wadb/SKILL.md).
+
+#### Claude Code
+
+Claude Code can load the included skill directly. Install `wadb` and Android platform-tools first, then choose one of these options from a cloned repository or an extracted release archive.
+
+Load the release as a plugin for one session:
+
+```sh
+claude --plugin-dir /path/to/wadb
+```
+
+The skill is available as `/wadb:wadb` and can also be selected automatically when the request matches its description.
+
+Alternatively, install only the skill for every local project:
+
+```sh
+mkdir -p ~/.claude/skills
+cp -R /path/to/wadb/skills/wadb ~/.claude/skills/
+```
+
+The personal skill is available as `/wadb`. Restart Claude Code if the top-level `~/.claude/skills` directory did not exist when the session started. Claude needs permission to run `wadb` through its shell tool; pairing and device access still happen locally on the user's machine.
 
 Useful diagnostics:
 
@@ -123,7 +174,7 @@ If the phone will not scan the code, the rendering is usually to blame:
 | `--qr-ascii` | Font or emulator renders half blocks poorly, leaving the code smeared or gapped. |
 | `--qr-sixel` | Terminal speaks sixel (iTerm2, WezTerm, foot, mlterm). Draws the code as an image with its own black-on-white palette, so it scans under any theme. |
 
-The same options can be set with environment variables: `WADB_ADB`, `WADB_IFACE`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_QR_INVERT`, `WADB_QR_SIXEL`, `WADB_VERBOSE`, `WADB_PAIR_TIMEOUT`, `WADB_CONNECT_TIMEOUT`, `WADB_SCAN_TIMEOUT`, `WADB_DEVICE`, `WADB_ALL`, and `WADB_JSON`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
+The same options can be set with environment variables: `WADB_ADB`, `WADB_IFACE`, `WADB_PAIR_ONLY`, `WADB_QR_ASCII`, `WADB_QR_INVERT`, `WADB_QR_SIXEL`, `WADB_VERBOSE`, `WADB_NON_INTERACTIVE`, `WADB_PAIR_TIMEOUT`, `WADB_CONNECT_TIMEOUT`, `WADB_SCAN_TIMEOUT`, `WADB_DEVICE`, `WADB_ALL`, `WADB_JSON`, and `WADB_OUTPUT`. CLI flags override environment values. Boolean variables accept values like `true`, `false`, `1`, or `0`; timeout variables use durations like `30s` or `3m`.
 
 ## How it works
 

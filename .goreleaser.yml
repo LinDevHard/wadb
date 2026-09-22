@@ -35,10 +35,14 @@ archives:
         formats:
           - zip
     files:
+      - .claude-plugin/plugin.json
       - README.md
       - LICENSE
+      - docs/agent-integration.md
+      - schemas/*
       - man/wadb.1
       - completions/*
+      - skills/wadb/*
 
 checksum:
   name_template: checksums.txt

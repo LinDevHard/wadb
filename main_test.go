@@ -129,12 +129,14 @@ func TestLoadEnvOptions(t *testing.T) {
 	t.Setenv("WADB_QR_INVERT", "true")
 	t.Setenv("WADB_QR_SIXEL", "0")
 	t.Setenv("WADB_VERBOSE", "false")
+	t.Setenv("WADB_NON_INTERACTIVE", "true")
 	t.Setenv("WADB_PAIR_TIMEOUT", "3m")
 	t.Setenv("WADB_CONNECT_TIMEOUT", "45s")
 	t.Setenv("WADB_SCAN_TIMEOUT", "5s")
 	t.Setenv("WADB_DEVICE", " pixel-8 ")
 	t.Setenv("WADB_ALL", "true")
 	t.Setenv("WADB_JSON", "true")
+	t.Setenv("WADB_OUTPUT", "json")
 
 	got, err := loadEnvOptions()
 	if err != nil {
@@ -158,8 +160,8 @@ func TestLoadEnvOptions(t *testing.T) {
 	if got.QRSixel {
 		t.Fatal("QRSixel = true, want false")
 	}
-	if got.Verbose {
-		t.Fatal("Verbose = true, want false")
+	if got.Verbose || !got.NonInteractive {
+		t.Fatalf("agent mode environment options = %+v", got)
 	}
 	if got.PairingTimeout != 3*time.Minute {
 		t.Fatalf("PairingTimeout = %s, want 3m", got.PairingTimeout)
@@ -167,7 +169,7 @@ func TestLoadEnvOptions(t *testing.T) {
 	if got.ConnectTimeout != 45*time.Second {
 		t.Fatalf("ConnectTimeout = %s, want 45s", got.ConnectTimeout)
 	}
-	if got.ScanTimeout != 5*time.Second || got.Device != "pixel-8" || !got.All || !got.JSON {
+	if got.ScanTimeout != 5*time.Second || got.Device != "pixel-8" || !got.All || !got.JSON || got.Output != "json" {
 		t.Fatalf("device-manager environment options = %+v", got)
 	}
 }
@@ -185,6 +187,13 @@ func TestLoadEnvOptionsRejectsInvalidValues(t *testing.T) {
 	}
 }
 
+func TestLoadEnvOptionsRejectsInvalidOutputFormat(t *testing.T) {
+	t.Setenv("WADB_OUTPUT", "yaml")
+	if _, err := loadEnvOptions(); err == nil {
+		t.Fatal("loadEnvOptions accepted an unsupported output format")
+	}
+}
+
 func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	envOpts := runOptions{
 		ADBPath:        "/tmp/env-adb",
@@ -195,6 +204,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 		QRASCII:        true,
 		QRInvert:       true,
 		Verbose:        true,
+		NonInteractive: true,
 	}
 
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -207,12 +217,14 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 		"--qr-ascii=false",
 		"--qr-invert=false",
 		"--verbose=false",
+		"--non-interactive=false",
 		"--pair-timeout", "10s",
 		"--connect-timeout", "20s",
 		"--scan-timeout", "4s",
 		"--device", "pixel-8",
 		"--all",
 		"--json",
+		"--output", "json",
 	}); err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -224,7 +236,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	if got.Iface != "en1" {
 		t.Fatalf("Iface = %q, want en1", got.Iface)
 	}
-	if got.PairOnly || got.QRASCII || got.QRInvert || got.Verbose {
+	if got.PairOnly || got.QRASCII || got.QRInvert || got.Verbose || got.NonInteractive {
 		t.Fatalf("bool flags did not override env defaults: %+v", got)
 	}
 	if got.PairingTimeout != 10*time.Second {
@@ -233,7 +245,7 @@ func TestCLIFlagsOverrideEnvDefaults(t *testing.T) {
 	if got.ConnectTimeout != 20*time.Second {
 		t.Fatalf("ConnectTimeout = %s, want 20s", got.ConnectTimeout)
 	}
-	if got.ScanTimeout != 4*time.Second || got.Device != "pixel-8" || !got.All || !got.JSON {
+	if got.ScanTimeout != 4*time.Second || got.Device != "pixel-8" || !got.All || !got.JSON || got.Output != "json" {
 		t.Fatalf("device-manager flags = %+v", got)
 	}
 }
@@ -246,6 +258,7 @@ func TestNormalizeCLIArgsAllowsFlagsAfterCommands(t *testing.T) {
 		{[]string{"devices", "--verbose", "--scan-timeout", "5s"}, []string{"--verbose", "--scan-timeout", "5s", "devices"}},
 		{[]string{"pair", "192.168.1.20:37123", "--pair-only"}, []string{"--pair-only", "pair", "192.168.1.20:37123"}},
 		{[]string{"connect", "--device=pixel", "--json"}, []string{"--device=pixel", "--json", "connect"}},
+		{[]string{"doctor", "--output", "json"}, []string{"--output", "json", "doctor"}},
 		{[]string{"--iface", "en0", "disconnect", "--all"}, []string{"--iface", "en0", "--all", "disconnect"}},
 	}
 	for _, tt := range tests {
@@ -309,7 +322,7 @@ func TestPackagedFilesDocumentEveryFlag(t *testing.T) {
 				t.Errorf("%s does not mention %s", path, name)
 			}
 		}
-		for _, command := range []string{"pair", "connect", "devices", "disconnect", "doctor"} {
+		for _, command := range []string{"pair", "connect", "devices", "disconnect", "doctor", "capabilities", "schema"} {
 			if !strings.Contains(content, command) {
 				t.Errorf("%s does not mention the %s command", path, command)
 			}
@@ -961,6 +974,7 @@ func replaceHooks(t *testing.T) func() {
 	oldBrowsePairing := browsePairing
 	oldBrowseConnect := browseConnect
 	oldReadPairingCode := readPairingCode
+	oldStdinIsTerminal := stdinIsTerminal
 
 	findADB = func() (string, error) {
 		t.Fatal("findADB should not be called when ADBPath is explicit")
@@ -983,6 +997,7 @@ func replaceHooks(t *testing.T) func() {
 		return nil, nil
 	}
 	readPairingCode = func() (string, error) { return "123456", nil }
+	stdinIsTerminal = func() bool { return false }
 
 	return func() {
 		findADB = oldFindADB
@@ -997,6 +1012,7 @@ func replaceHooks(t *testing.T) func() {
 		browsePairing = oldBrowsePairing
 		browseConnect = oldBrowseConnect
 		readPairingCode = oldReadPairingCode
+		stdinIsTerminal = oldStdinIsTerminal
 	}
 }
 

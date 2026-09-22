@@ -1,4 +1,4 @@
-.TH WADB 1 "2026-09-14" "wadb" "User Commands"
+.TH WADB 1 "2026-09-22" "wadb" "User Commands"
 .SH NAME
 wadb \- pair Android devices over ADB Wi\-Fi via a terminal QR code or
 pairing code
@@ -26,6 +26,14 @@ pairing code
 .B wadb
 .RI [ flags ]
 .B doctor
+.br
+.B wadb
+.RI [ flags ]
+.B capabilities
+.br
+.B wadb
+.RI [ flags ]
+.B schema
 .SH DESCRIPTION
 .B wadb
 prints a QR code in the terminal. Scanning it from
@@ -97,6 +105,20 @@ its platform\-tools version, the network interfaces worth passing to
 and the mDNS services
 .B adb
 can see.
+.TP
+.B capabilities
+Describe the agent-facing command contract without starting
+.B adb
+or scanning the network. With
+.BR "\-\-output json" ,
+the response lists commands, side effects, user-action and standard-input
+requirements, stable error codes, and the published JSON Schema path.
+.TP
+.B schema
+Print the version 1 structured-output JSON Schema embedded in the binary.
+With
+.BR "\-\-output json" ,
+the schema is returned inside the standard response envelope.
 .SH OPTIONS
 .TP
 .BI \-\-adb " path"
@@ -130,6 +152,13 @@ sixel protocol, and scans under any color theme.
 .B \-\-verbose
 Print discovered mDNS service entries to standard error.
 .TP
+.B \-\-non\-interactive
+Never prompt for input on a terminal. Pairing by code remains available when
+the six-digit code is supplied through redirected standard input. QR pairing
+returns
+.B interactive_required
+instead of displaying a code or waiting for a scan.
+.TP
 .BI \-\-pair\-timeout " duration"
 How long to wait for the pairing announce. Default 2m.
 .TP
@@ -158,11 +187,35 @@ and
 .BR disconnect .
 .TP
 .B \-\-json
-Write machine-readable JSON output. Supported by
+Write the backward-compatible v1.2 machine-readable array output. Supported by
 .BR devices ,
 .BR connect ,
-and
 .BR disconnect .
+.TP
+.BI \-\-output " format"
+Select
+.B text
+or the versioned
+.B json
+response envelope. Structured JSON is supported by pairing with a code,
+capability discovery, diagnostics, device listing, connect, disconnect, and
+version output. Progress
+and diagnostics remain on standard error. Interactive QR pairing does not
+support structured output; use pairing by code instead.
+When multiple devices are available,
+.B connect \-\-output json
+requires an explicit
+.B \-\-device
+or
+.BR \-\-all .
+Structured errors include
+.B retryable
+and
+.B requires_user_action
+booleans. The complete version 1 contract is published as
+.B schemas/wadb-output-v1.schema.json
+and can be retrieved from an installed binary with
+.BR "wadb schema" .
 .TP
 .B \-\-version
 Print the version and exit.
@@ -203,6 +256,10 @@ Same as
 Same as
 .BR \-\-verbose .
 .TP
+.B WADB_NON_INTERACTIVE
+Same as
+.BR \-\-non\-interactive .
+.TP
 .B WADB_PAIR_TIMEOUT
 Same as
 .BR \-\-pair\-timeout .
@@ -226,6 +283,10 @@ Same as
 .B WADB_JSON
 Same as
 .BR \-\-json .
+.TP
+.B WADB_OUTPUT
+Same as
+.BR \-\-output .
 .PP
 Boolean variables accept values such as true, false, 1, or 0. Duration
 variables accept values such as 30s or 3m.
@@ -239,6 +300,21 @@ Pairing, discovery, or connecting failed.
 .TP
 .B 2
 Invalid arguments or environment values.
+.PP
+With
+.BR "\-\-output json" ,
+nonzero exits still write one structured error to standard output. Stable error
+codes include
+.BR invalid_arguments ,
+.BR interactive_required ,
+.BR adb_not_found ,
+.BR device_not_found ,
+.BR multiple_devices ,
+.BR discovery_timeout ,
+.BR pairing_failed ,
+.BR connection_failed ,
+and
+.BR disconnect_failed .
 .SH EXAMPLES
 Pair and connect a new device:
 .PP
@@ -287,6 +363,14 @@ Diagnose a discovery problem:
 .EX
 wadb doctor
 wadb \-\-verbose
+.EE
+.RE
+.PP
+Inspect the agent-facing contract:
+.PP
+.RS
+.EX
+wadb capabilities \-\-non\-interactive \-\-output json
 .EE
 .RE
 .SH SEE ALSO

@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-22
+
+### Added
+
+- Added `--output json` and a versioned JSON envelope for pairing by code, diagnostics, device listing, connect, disconnect, version output, and structured errors.
+- Added stable machine-readable error codes and actionable suggestions for agent integrations.
+- Added an Agent Skill and an integration guide covering safe device selection, pairing-code input, and state-changing operations.
+- Added a Claude Code plugin manifest and documented plugin and personal-skill installation; release archives can be loaded with `claude --plugin-dir`.
+- Added `wadb capabilities` for machine-readable discovery of commands, side effects, interaction requirements, and stable errors.
+- Added `--non-interactive`/`WADB_NON_INTERACTIVE` to prevent terminal prompts while still allowing pairing codes through redirected stdin.
+- Added a published and binary-embedded JSON Schema for the complete v1 response envelope, available through `wadb schema`, plus retry/user-action metadata on structured errors.
+
+### Changed
+
+- Structured JSON mode writes exactly one response object to stdout and keeps progress on stderr; the v1.2 `--json` array shapes remain backward compatible.
+- `connect --output json` refuses to choose silently when multiple devices are discovered; agents must pass `--device` or explicitly request `--all`.
+- Interactive QR pairing rejects structured output and directs integrations to pairing by code.
+- CI now validates agent-facing JSON assets and the GoReleaser configuration before tagged releases.
+
 ## [1.2.0] - 2026-09-14
 
 ### Added
@@ -103,7 +122,8 @@ All notable changes to this project are documented here.
 - mDNS discovery for `_adb-tls-pairing._tcp` and `_adb-tls-connect._tcp`.
 - `adb pair` and `adb connect` orchestration.
 
-[Unreleased]: https://github.com/LinDevHard/wadb/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/LinDevHard/wadb/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/LinDevHard/wadb/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/LinDevHard/wadb/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/LinDevHard/wadb/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/LinDevHard/wadb/compare/v1.0.0...v1.1.0

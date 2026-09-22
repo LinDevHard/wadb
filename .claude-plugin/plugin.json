@@ -1,0 +1,11 @@
+{
+  "name": "wadb",
+  "description": "Teach Claude Code to pair, reconnect, inspect, diagnose, and disconnect Android devices over ADB Wi-Fi with wadb.",
+  "version": "1.3.0",
+  "author": {
+    "name": "LinDevHard"
+  },
+  "homepage": "https://github.com/LinDevHard/wadb",
+  "repository": "https://github.com/LinDevHard/wadb",
+  "license": "MIT"
+}

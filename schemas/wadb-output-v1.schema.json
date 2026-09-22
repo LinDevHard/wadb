@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LinDevHard/wadb/blob/main/schemas/wadb-output-v1.schema.json",
+  "title": "wadb structured output schema v1",
+  "description": "Validates the versioned JSON envelope written by wadb --output json. Consumers must ignore unknown fields for forward-compatible additions within schema version 1.",
+  "oneOf": [
+    { "$ref": "#/$defs/failure" },
+    { "$ref": "#/$defs/versionSuccess" },
+    { "$ref": "#/$defs/helpSuccess" },
+    { "$ref": "#/$defs/capabilitiesSuccess" },
+    { "$ref": "#/$defs/schemaSuccess" },
+    { "$ref": "#/$defs/doctorSuccess" },
+    { "$ref": "#/$defs/devicesSuccess" },
+    { "$ref": "#/$defs/connectSuccess" },
+    { "$ref": "#/$defs/disconnectSuccess" },
+    { "$ref": "#/$defs/pairSuccess" }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["schema_version", "ok", "action"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "ok": { "type": "boolean" },
+        "action": { "type": "string" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "retryable", "requires_user_action"],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_arguments",
+            "interactive_required",
+            "invalid_pairing_code",
+            "adb_not_found",
+            "adb_error",
+            "pairing_failed",
+            "discovery_timeout",
+            "device_not_found",
+            "multiple_devices",
+            "connection_failed",
+            "disconnect_failed",
+            "internal_error"
+          ]
+        },
+        "message": { "type": "string" },
+        "suggestion": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "requires_user_action": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "failure": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "required": ["error"],
+          "properties": {
+            "ok": { "const": false },
+            "action": {
+              "enum": ["unknown", "help", "version", "capabilities", "schema", "doctor", "devices", "connect", "disconnect", "pair"]
+            },
+            "error": { "$ref": "#/$defs/error" }
+          },
+          "not": { "required": ["result"] }
+        }
+      ]
+    },
+    "success": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "required": ["result"],
+          "properties": { "ok": { "const": true } },
+          "not": { "required": ["error"] }
+        }
+      ]
+    },
+    "connection": {
+      "type": "object",
+      "required": ["address", "status"],
+      "properties": {
+        "address": { "type": "string" },
+        "instance": { "type": "string" },
+        "status": { "enum": ["connected", "failed"] },
+        "device": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "device": {
+      "type": "object",
+      "required": ["id", "address", "status", "transport", "source"],
+      "properties": {
+        "id": { "type": "string" },
+        "address": { "type": "string" },
+        "status": { "type": "string" },
+        "name": { "type": "string" },
+        "transport": { "type": "string" },
+        "source": { "type": "string" },
+        "instance": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "versionSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "version" },
+            "result": {
+              "type": "object",
+              "required": ["version"],
+              "properties": { "version": { "type": "string" } },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "helpSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "help" },
+            "result": {
+              "type": "object",
+              "required": ["usage"],
+              "properties": { "usage": { "type": "string" } },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "capabilitiesSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "capabilities" },
+            "result": {
+              "type": "object",
+              "required": ["cli_version", "schema_version", "schema_file", "schema_command", "structured_output_flag", "non_interactive_flag", "legacy_json_flag", "commands", "errors"],
+              "properties": {
+                "cli_version": { "type": "string" },
+                "schema_version": { "const": 1 },
+                "schema_file": { "type": "string" },
+                "schema_command": { "type": "string" },
+                "structured_output_flag": { "type": "string" },
+                "non_interactive_flag": { "type": "string" },
+                "legacy_json_flag": { "type": "string" },
+                "commands": { "type": "array", "items": { "type": "object" } },
+                "errors": { "type": "array", "items": { "type": "object" } }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "schemaSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "schema" },
+            "result": {
+              "type": "object",
+              "required": ["schema"],
+              "properties": { "schema": { "type": "object" } },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "doctorSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "doctor" },
+            "result": {
+              "type": "object",
+              "required": ["adb_path", "adb_server", "interfaces", "mdns_services", "warnings", "hints"],
+              "properties": {
+                "adb_path": { "type": "string" },
+                "adb_server": { "type": "string" },
+                "platform_tools": { "type": "integer" },
+                "adb_version": { "type": "string" },
+                "interfaces": { "type": "array", "items": { "type": "string" } },
+                "mdns_services": { "type": "array", "items": { "type": "string" } },
+                "warnings": { "type": "array", "items": { "type": "string" } },
+                "hints": { "type": "array", "items": { "type": "string" } }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "devicesSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "devices" },
+            "result": {
+              "type": "object",
+              "required": ["devices"],
+              "properties": { "devices": { "type": "array", "items": { "$ref": "#/$defs/device" } } },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "connectSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "connect" },
+            "result": {
+              "type": "object",
+              "required": ["connections"],
+              "properties": { "connections": { "type": "array", "items": { "$ref": "#/$defs/connection" } } },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "disconnectSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "disconnect" },
+            "result": {
+              "type": "object",
+              "required": ["disconnections"],
+              "properties": { "disconnections": { "type": "array", "items": { "type": "object" } } },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+    "pairSuccess": {
+      "allOf": [
+        { "$ref": "#/$defs/success" },
+        {
+          "properties": {
+            "action": { "const": "pair" },
+            "result": {
+              "type": "object",
+              "required": ["paired", "pairing_address", "connected"],
+              "properties": {
+                "paired": { "const": true },
+                "pairing_address": { "type": "string" },
+                "connected": { "type": "boolean" },
+                "connections": { "type": "array", "items": { "$ref": "#/$defs/connection" } }
+              },
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    }
+  }
+}

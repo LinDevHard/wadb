@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -103,7 +102,8 @@ func adbReportedConnectEndpoints(ctx context.Context, adbPath string, logf mdns.
 // at the first success. Endpoints belonging to devices this host has not paired
 // with simply fail, so trying them all is how the paired one is found.
 func connectToEndpoints(ctx context.Context, adbPath string, endpoints []mdns.Endpoint) error {
-	return connectToEndpointsMode(ctx, adbPath, endpoints, false, false)
+	_, err := tryConnectEndpoints(ctx, adbPath, endpoints, false, false)
+	return err
 }
 
 type connectionResult struct {
@@ -115,12 +115,23 @@ type connectionResult struct {
 }
 
 func connectToEndpointsMode(ctx context.Context, adbPath string, endpoints []mdns.Endpoint, all, jsonOutput bool) error {
+	results, err := tryConnectEndpoints(ctx, adbPath, endpoints, all, jsonOutput)
+	if err != nil {
+		return err
+	}
+	if jsonOutput {
+		return writeJSON(results)
+	}
+	return nil
+}
+
+func tryConnectEndpoints(ctx context.Context, adbPath string, endpoints []mdns.Endpoint, all, quiet bool) ([]connectionResult, error) {
 	var failures []string
 	var results []connectionResult
 	succeeded := 0
 	for _, ep := range endpoints {
 		addr := net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port))
-		if !jsonOutput {
+		if !quiet {
 			fmt.Printf("Connecting to %s...\n", addr)
 		}
 		out, err := adbConnect(ctx, adbPath, ep.Host, ep.Port)
@@ -131,37 +142,27 @@ func connectToEndpointsMode(ctx context.Context, adbPath string, endpoints []mdn
 			}
 			results = append(results, result)
 			succeeded++
-			if !jsonOutput {
+			if !quiet {
 				fmt.Println(out)
 				if result.Device != "" {
 					fmt.Println("Device:", result.Device)
 				}
 			}
 			if !all {
-				if jsonOutput {
-					if encodeErr := json.NewEncoder(os.Stdout).Encode(results); encodeErr != nil {
-						return fmt.Errorf("write JSON: %w", encodeErr)
-					}
-				}
-				return nil
+				return results, nil
 			}
 			continue
 		}
 		failures = append(failures, err.Error())
 		results = append(results, connectionResult{Address: addr, Instance: ep.Instance, Status: "failed", Error: err.Error()})
-		if all && !jsonOutput {
+		if all && !quiet {
 			fmt.Fprintln(os.Stderr, "Warning:", err)
 		}
 	}
-	if jsonOutput {
-		if encodeErr := json.NewEncoder(os.Stdout).Encode(results); encodeErr != nil {
-			return fmt.Errorf("write JSON: %w", encodeErr)
-		}
-	}
 	if succeeded > 0 {
-		return nil
+		return results, nil
 	}
-	return fmt.Errorf("failed to connect to %d discovered endpoint(s): %s", len(endpoints), strings.Join(failures, "; "))
+	return results, fmt.Errorf("failed to connect to %d discovered endpoint(s): %s", len(endpoints), strings.Join(failures, "; "))
 }
 
 func endpointID(instance string) string {
@@ -214,23 +215,47 @@ func connect(opts runOptions) error {
 	}
 	if opts.Device != "" {
 		if endpoint, parseErr := parseEndpoint(opts.Device); parseErr == nil {
-			return connectToEndpointsMode(ctx, adbPath, []mdns.Endpoint{endpoint}, false, opts.JSON)
+			results, connectErr := tryConnectEndpoints(ctx, adbPath, []mdns.Endpoint{endpoint}, false, opts.machineOutput())
+			if connectErr != nil {
+				return withErrorCode("connection_failed", connectErr, "Confirm that this host is paired with the device and retry while Wireless debugging is open.")
+			}
+			if opts.structuredJSON() {
+				return writeJSONSuccess("connect", map[string]any{"connections": results})
+			}
+			if opts.JSON {
+				return writeJSON(results)
+			}
+			return nil
 		}
 	}
 
-	if !opts.JSON {
+	if !opts.machineOutput() {
 		fmt.Println("Looking for devices announcing _adb-tls-connect._tcp...")
 	}
 	endpoints, err := discoverConnectEndpoints(ctx, adbPath, opts.ConnectTimeout, "", mdnsOpts)
 	if err != nil {
-		return fmt.Errorf("no _adb-tls-connect._tcp announce appeared within %s: %w\nenable Wireless debugging on a device already paired with this host, or run wadb without arguments to pair a new one\nif a VPN or container bridge is active, limit discovery with --iface (wadb doctor lists the candidates)", opts.ConnectTimeout, err)
+		wrapped := fmt.Errorf("no _adb-tls-connect._tcp announce appeared within %s: %w\nenable Wireless debugging on a device already paired with this host, or run wadb without arguments to pair a new one\nif a VPN or container bridge is active, limit discovery with --iface (wadb doctor lists the candidates)", opts.ConnectTimeout, err)
+		return withErrorCode("discovery_timeout", wrapped, "Enable Wireless debugging, then retry; use wadb doctor --output json if discovery still fails.")
 	}
 
 	endpoints = selectEndpoints(endpoints, opts.Device)
 	if len(endpoints) == 0 {
-		return fmt.Errorf("no discovered device matches %q", opts.Device)
+		return withErrorCode("device_not_found", fmt.Errorf("no discovered device matches %q", opts.Device), "Run wadb devices --output json and select an id or address from the result.")
 	}
-	return connectToEndpointsMode(ctx, adbPath, endpoints, opts.All, opts.JSON)
+	if opts.structuredJSON() && opts.Device == "" && !opts.All && len(endpoints) > 1 {
+		return withErrorCode("multiple_devices", fmt.Errorf("found %d wireless devices; refusing to choose one in structured JSON mode", len(endpoints)), "Run wadb devices --output json, then pass --device <id|address>, or explicitly pass --all.")
+	}
+	results, err := tryConnectEndpoints(ctx, adbPath, endpoints, opts.All, opts.machineOutput())
+	if err != nil {
+		return withErrorCode("connection_failed", err, "Confirm that this host is paired with the device and retry while Wireless debugging is open.")
+	}
+	if opts.structuredJSON() {
+		return writeJSONSuccess("connect", map[string]any{"connections": results})
+	}
+	if opts.JSON {
+		return writeJSON(results)
+	}
+	return nil
 }
 
 type managedDevice struct {
@@ -261,7 +286,7 @@ func devices(opts runOptions) error {
 
 	connected, err := adbDevices(ctx, adbPath)
 	if err != nil {
-		return err
+		return withErrorCode("adb_error", err, "Check the adb server and run wadb doctor --output json for diagnostics.")
 	}
 	announced, scanErr := scanConnectEndpoints(ctx, adbPath, opts.ScanTimeout, mdnsOpts)
 	if scanErr != nil && opts.Verbose {
@@ -269,8 +294,11 @@ func devices(opts runOptions) error {
 	}
 	rows := mergeManagedDevices(connected, announced)
 	rows = selectManagedDevices(rows, opts.Device)
+	if opts.structuredJSON() {
+		return writeJSONSuccess("devices", map[string]any{"devices": rows})
+	}
 	if opts.JSON {
-		return json.NewEncoder(os.Stdout).Encode(rows)
+		return writeJSON(rows)
 	}
 	if len(rows) == 0 {
 		fmt.Println("No ADB devices or wireless debugging announces found.")
@@ -426,14 +454,17 @@ func disconnect(opts runOptions) error {
 			result.Status = "failed"
 			result.Error = err.Error()
 		}
-		if opts.JSON {
-			if encodeErr := json.NewEncoder(os.Stdout).Encode([]disconnectResult{result}); encodeErr != nil {
-				return fmt.Errorf("write JSON: %w", encodeErr)
-			}
+		if err != nil {
+			return withErrorCode("disconnect_failed", err, "Run wadb devices --output json and retry with an explicit device address.")
+		}
+		if opts.structuredJSON() {
+			return writeJSONSuccess("disconnect", map[string]any{"disconnections": []disconnectResult{result}})
+		} else if opts.JSON {
+			return writeJSON([]disconnectResult{result})
 		} else if out != "" {
 			fmt.Println(out)
 		}
-		return err
+		return nil
 	}
 
 	addresses, err := resolveDisconnectAddresses(ctx, adbPath, opts)
@@ -449,18 +480,19 @@ func disconnect(opts runOptions) error {
 			result.Status = "failed"
 			result.Error = disconnectErr.Error()
 			failures = append(failures, disconnectErr.Error())
-		} else if !opts.JSON && out != "" {
+		} else if !opts.machineOutput() && out != "" {
 			fmt.Println(out)
 		}
 		results = append(results, result)
 	}
-	if opts.JSON {
-		if encodeErr := json.NewEncoder(os.Stdout).Encode(results); encodeErr != nil {
-			return fmt.Errorf("write JSON: %w", encodeErr)
-		}
-	}
 	if len(failures) > 0 {
-		return errors.New(strings.Join(failures, "; "))
+		return withErrorCode("disconnect_failed", errors.New(strings.Join(failures, "; ")), "Run wadb devices --output json and retry with the current wireless address.")
+	}
+	if opts.structuredJSON() {
+		return writeJSONSuccess("disconnect", map[string]any{"disconnections": results})
+	}
+	if opts.JSON {
+		return writeJSON(results)
 	}
 	return nil
 }
@@ -490,9 +522,10 @@ func resolveDisconnectAddresses(ctx context.Context, adbPath string, opts runOpt
 	addresses = uniqueStrings(addresses)
 	if len(addresses) == 0 {
 		if scanErr != nil {
-			return nil, fmt.Errorf("no wireless device matches %q; discovery failed: %w", opts.Device, scanErr)
+			wrapped := fmt.Errorf("no wireless device matches %q; discovery failed: %w", opts.Device, scanErr)
+			return nil, withErrorCode("device_not_found", wrapped, "Run wadb devices --output json and select a current wireless address.")
 		}
-		return nil, fmt.Errorf("no wireless device matches %q", opts.Device)
+		return nil, withErrorCode("device_not_found", fmt.Errorf("no wireless device matches %q", opts.Device), "Run wadb devices --output json and select a current wireless address.")
 	}
 	return addresses, nil
 }
