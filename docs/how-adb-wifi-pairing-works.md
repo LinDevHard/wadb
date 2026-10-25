@@ -19,7 +19,7 @@ phone becomes discoverable afterward.
 
 The flow has two services and two different jobs:
 
-![ADB Wi-Fi pairing flow: QR pairing, mDNS discovery, and connection](assets/adb-wifi-pairing-flow.png)
+![ADB Wi-Fi pairing flow: QR pairing, mDNS discovery, and connection](assets/adb-wifi-pairing-flow.webp)
 
 The ordering matters. `_adb-tls-connect._tcp` is normally advertised while
 Wireless debugging is active, so it may exist before pairing begins. Pairing
