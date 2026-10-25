@@ -190,7 +190,12 @@ With `wadb pair <host:port>`, steps 2–3 are replaced by the address and pairin
 
 ## Background
 
-For a deeper explanation of the ADB Wi-Fi pairing flow, mDNS discovery, and newer reconnect improvements, see the Android Makers/droidCon 2026 talk [How ADB Wifi 2.0 works](https://www.youtube.com/watch?v=_CR44gRhad4).
+For a technical walkthrough of the QR payload, pairing and connection services,
+and the discovery problems wadb handles, see
+[How ADB Wi-Fi pairing works: QR codes, mDNS, and two different ports](docs/how-adb-wifi-pairing-works.md).
+
+For more on newer reconnect improvements, see the Android Makers/droidCon 2026
+talk [How ADB Wifi 2.0 works](https://www.youtube.com/watch?v=_CR44gRhad4).
 
 ## `adb` discovery
 
