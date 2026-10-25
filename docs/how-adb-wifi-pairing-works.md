@@ -19,20 +19,7 @@ phone becomes discoverable afterward.
 
 The flow has two services and two different jobs:
 
-```text
-Host                                        Android device
-----                                        --------------
-                                            Wireless debugging enabled
-                            <-------------- advertise _adb-tls-connect._tcp
-generate service name + pairing secret
-render them as a QR code  ----------------> scan QR
-                                            start pairing server
-                            <-------------- advertise _adb-tls-pairing._tcp
-find the matching pairing service
-run adb pair <pairing endpoint> ----------> authenticate secret, exchange keys
-find the already-active connect service
-run adb connect <connect endpoint> --------> authenticated ADB transport
-```
+![ADB Wi-Fi pairing flow: QR pairing, mDNS discovery, and connection](assets/adb-wifi-pairing-flow.png)
 
 The ordering matters. `_adb-tls-connect._tcp` is normally advertised while
 Wireless debugging is active, so it may exist before pairing begins. Pairing
